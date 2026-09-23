@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.8</title>
+<title>定跡チェッカー ver.1.9</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -47,7 +47,7 @@ td.w-cell{background:#ffcdd2!important;}
 </head>
 <body>
 <div id="d-ovl">📂 棋譜ファイルをドロップして登録</div>
-<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.8</span></h2>
+<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.9</span></h2>
 <div class="pbar"><select id="sel" onchange="swKif()"></select><button class="btn" style="background:#c62828;" onclick="delKif()">削除</button></div>
 <div style="margin:3px 0;display:flex;justify-content:center;gap:4px;">
 <button class="btn" style="background:#d81b60;" onclick="sRec()">🔴 作成</button>
@@ -649,9 +649,31 @@ function rG(){
   else el.innerText = "棋譜を登録または選択してください";
   initB(); uScr(); renderBoard();
 }
-function oSync(){document.getElementById("sx").value = localStorage.getItem("skifs_min") || JSON.stringify(skifs); oM("smodal");}
+function oSync(){
+  try {
+    var str = localStorage.getItem("skifs_min") || JSON.stringify(skifs);
+    document.getElementById("sx").value = str;
+    oM("smodal");
+  } catch(e) {}
+}
 function cSync(){document.getElementById("sx").select(); document.execCommand("copy"); alert("コピー完了");}
-function aSync(){try{skifs = JSON.parse(document.getElementById("sx").value.trim()); localStorage.setItem("skifs_min", JSON.stringify(skifs)); var rk = Object.keys(skifs); uD(rk.length ? rk[0] : ""); if(rk.length) lB(skifs[rk[0]], rk[0]); else {parsedTree = []; bk = []; rawMoves = []; rG();} cM("smodal"); alert("同期完了");}catch(e){alert("形式不正");}}
+function aSync(){
+  try{
+    var raw = document.getElementById("sx").value.trim();
+    // LINEやメール等を経由した際に混入する「実際の改行」や「スマートクォート」を無害化
+    raw = raw.replace(/(?:\r\n|\r|\n)/g, '').replace(/[“”]/g, '"');
+    skifs = JSON.parse(raw);
+    localStorage.setItem("skifs_min", JSON.stringify(skifs));
+    var rk = Object.keys(skifs);
+    uD(rk.length ? rk[0] : "");
+    if(rk.length) lB(skifs[rk[0]], rk[0]);
+    else {parsedTree = []; bk = []; rawMoves = []; rG();}
+    cM("smodal");
+    alert("同期完了");
+  }catch(e){
+    alert("形式不正: データのコピー中に文字が欠損しています。");
+  }
+}
 
 window.addEventListener("dragover", function(e){e.preventDefault(); var d = document.getElementById("d-ovl"); if(d) d.style.display = "flex";});
 window.addEventListener("dragleave", function(e){if(e.clientX <= 0 || e.clientY <= 0){var d = document.getElementById("d-ovl"); if(d) d.style.display = "none";}});
