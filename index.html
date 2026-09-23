@@ -87,6 +87,7 @@ function delKif(){
   else{bk=[];rawMoves=[];rG();}
 }
 
+// 駒打ち、同○、成りを確実にパースするロジック
 function pK(tx){
   var ls=tx.split(/\r?\n/),px=0,py=0;
   rawMoves=[];
@@ -112,8 +113,11 @@ function pK(tx){
     }
 
     if(moveCore.indexOf("打")!==-1){
-      var pt=moveCore.replace(/^同/,'').replace(/[１-９一-九]/g,'').replace('打','').trim();
-      from="h_"+pt;
+      // 駒名のみをピンポイントで抽出（例：６六角打 -> 角）
+      var mPiece=moveCore.match(/([歩香桂銀金角飛])打/);
+      if(mPiece){
+        from="h_"+mPiece[1];
+      }
     }else if(fromCoord){
       from=fromCoord[0]+","+fromCoord[1];
     }
@@ -163,7 +167,6 @@ function uScr(){
 function svH(){hst.push({b:JSON.parse(JSON.stringify(bS)),sh:JSON.parse(JSON.stringify(sHnd)),gh:JSON.parse(JSON.stringify(gHnd)),st:st,tx:document.getElementById("st").innerHTML,rt:rTurn,rl:rLines.slice(),cc:cCnt,hf:hFail});}
 function uM(){if(isA||!hst.length)return;var p=hst.pop();bS=p.b;sHnd=p.sh;gHnd=p.gh;st=p.st;sF=null;hI=null;cCnt=p.cc;hFail=p.hf;if(isR){rTurn=p.rt;rLines=p.rl;uRSt();}else{document.getElementById("st").innerHTML=p.tx;uScr();}renderBoard();}
 
-// 手数指定ジャンプ機能
 function jumpToPly(){
   if(!rawMoves.length){alert("棋譜が読み込まれていません");return;}
   var maxPly=rawMoves.length;
@@ -172,9 +175,8 @@ function jumpToPly(){
   var target=parseInt(input,10);
   if(isNaN(target)||target<0||target>maxPly){alert("0から"+maxPly+"の数値を入力してください");return;}
 
-  // 先手の手番（奇数手目）から練習が始まるよう、偶数手まで再生して待機
   var playCount=target;
-  if(playCount%2!==0) playCount--; // 奇数手指定ならその直前の偶数手（相手の手完了時）に合わせる
+  if(playCount%2!==0) playCount--;
 
   initB();
   for(var i=0;i<playCount;i++){
@@ -274,7 +276,15 @@ function onC(x,y){
   var isDrop=(from.indexOf("h_")===0);
   var pt=isDrop?from.replace("h_",""):bS[from].t;
 
-  if(exp.from===from&&exp.to===to){
+  // 正解判定（駒打ち・盤上移動ともに厳密に比較）
+  var isMatch=false;
+  if(isDrop){
+    isMatch=(exp.from==="h_"+pt && exp.to===to);
+  }else{
+    isMatch=(exp.from===from && exp.to===to);
+  }
+
+  if(isMatch){
     svH();isA=true;if(!hFail)cCnt++;
     if(!isDrop&&exp.name.indexOf("成")!==-1&&pt.indexOf("成")===-1){
       if(pt==="角")pt="馬";else if(pt==="飛")pt="竜";else if(pt==="歩")pt="と";
