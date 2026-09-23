@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.1</title>
+<title>定跡チェッカー ver.1.4</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -47,7 +47,7 @@ td.w-cell{background:#ffcdd2!important;}
 </head>
 <body>
 <div id="d-ovl">📂 棋譜ファイルをドロップして登録</div>
-<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.1</span></h2>
+<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.4</span></h2>
 <div class="pbar"><select id="sel" onchange="swKif()"></select><button class="btn" style="background:#c62828;" onclick="delKif()">削除</button></div>
 <div style="margin:3px 0;display:flex;justify-content:center;gap:4px;">
 <button class="btn" style="background:#d81b60;" onclick="sRec()">🔴 作成</button>
@@ -204,36 +204,45 @@ function parseFullKif(tx){
   return blocks;
 }
 
+// 特定ブロックがどの手順を前提にしているかを完全構築する関数
+function getFullSequenceForBlock(blockIndex){
+  var target = parsedTree[blockIndex];
+  if(!target) return [];
+  if(target.startPly === 1){
+    var seq0 = [], px0 = 0, py0 = 0;
+    for(var j = 0; j < target.lines.length; j++){
+      var pm = parseLineMove(target.lines[j], px0, py0);
+      if(pm){ px0 = pm.tx; py0 = pm.ty; seq0.push(pm); }
+    }
+    return seq0;
+  }
+
+  // 親となるブロックの手順を探す（直前ブロックから直近で該当手数のあったものを親とする）
+  var parentSeq = [];
+  for(var p = blockIndex - 1; p >= 0; p--){
+    var pSeq = getFullSequenceForBlock(p);
+    if(pSeq.length >= target.startPly - 1){
+      parentSeq = pSeq.slice(0, target.startPly - 1);
+      break;
+    }
+  }
+
+  var px = parentSeq.length ? parentSeq[parentSeq.length - 1].tx : 0;
+  var py = parentSeq.length ? parentSeq[parentSeq.length - 1].ty : 0;
+  var fullSeq = parentSeq.slice();
+
+  for(var k = 0; k < target.lines.length; k++){
+    var pm2 = parseLineMove(target.lines[k], px, py);
+    if(pm2){ px = pm2.tx; py = pm2.ty; fullSeq.push(pm2); }
+  }
+  return fullSeq;
+}
+
 function buildSequenceFromBlock(blockIndex){
   if(!parsedTree.length) return;
   currentBlockIndex = blockIndex;
-  var target = parsedTree[blockIndex];
-  var rawLines = [];
+  rawMoves = getFullSequenceForBlock(blockIndex);
 
-  if(target.startPly === 1){
-    rawLines = target.lines.slice();
-  } else {
-    var mainLines = parsedTree[0].lines;
-    for(var i = 0; i < mainLines.length; i++){
-      var clean = mainLines[i].replace(/[\u00A0\u3000\s]+/g, ' ').trim();
-      var ply = parseInt(clean.split(' ')[0], 10);
-      if(ply < target.startPly){
-        rawLines.push(mainLines[i]);
-      } else break;
-    }
-    rawLines = rawLines.concat(target.lines);
-  }
-
-  var seq = [], px = 0, py = 0;
-  for(var j = 0; j < rawLines.length; j++){
-    var pm = parseLineMove(rawLines[j], px, py);
-    if(pm){
-      px = pm.tx; py = pm.ty;
-      seq.push(pm);
-    }
-  }
-
-  rawMoves = seq;
   bk = [];
   for(var k = 0; k < rawMoves.length; k++){
     var it = rawMoves[k];
@@ -256,44 +265,63 @@ function lB(tx, kName){
   rG();
 }
 
+// 局面の完全突合による真の分岐判定
 function getBranchesAt(ply){
   var branches = [];
+  if(!rawMoves || rawMoves.length < ply) return [];
+
+  // 現在の手
+  var curMove = rawMoves[ply - 1];
+  branches.push({
+    index: currentBlockIndex,
+    name: parsedTree[currentBlockIndex] ? parsedTree[currentBlockIndex].name : "本譜",
+    moveName: curMove.name,
+    moveKey: curMove.from + "->" + curMove.to
+  });
+
+  // 全変化ブロックを検証
   for(var i = 0; i < parsedTree.length; i++){
+    if(i === currentBlockIndex) continue;
     var b = parsedTree[i];
-    if(i === 0){
-      var seq = [], px = 0, py = 0;
-      for(var j = 0; j < b.lines.length; j++){
-        var pm = parseLineMove(b.lines[j], px, py);
-        if(pm){
-          px = pm.tx; py = pm.ty;
-          if(pm.ply === ply){
-            branches.push({index: 0, name: "本譜", moveName: pm.name, moveKey: pm.from + "->" + pm.to});
+    
+    // 分岐開始手数が一致しているか
+    if(b.startPly === ply){
+      // その変化ブロックの「分岐直前（ply - 1手目）までの全着手」を取得
+      var bSeq = getFullSequenceForBlock(i);
+      if(bSeq.length >= ply){
+        // 1手目から ply - 1 手目までの着手履歴が現在と完全一致するか検証
+        var isIdenticalHistory = true;
+        for(var step = 0; step < ply - 1; step++){
+          if(bSeq[step].from !== rawMoves[step].from || bSeq[step].to !== rawMoves[step].to){
+            isIdenticalHistory = false;
             break;
           }
         }
-      }
-    } else {
-      if(b.startPly === ply && b.lines.length){
-        var mainLast = null;
-        if(rawMoves && rawMoves.length >= ply - 1 && ply > 1){
-          mainLast = rawMoves[ply - 2];
-        }
-        var px0 = mainLast ? mainLast.tx : 0, py0 = mainLast ? mainLast.ty : 0;
-        var pm0 = parseLineMove(b.lines[0], px0, py0);
-        if(pm0){
-          branches.push({index: i, name: b.name, moveName: pm0.name, moveKey: pm0.from + "->" + pm0.to});
+
+        // 過去の着手履歴が完全に一致している場合のみ、真の分岐手として採用
+        if(isIdenticalHistory){
+          var candMove = bSeq[ply - 1];
+          branches.push({
+            index: i,
+            name: b.name,
+            moveName: candMove.name,
+            moveKey: candMove.from + "->" + candMove.to
+          });
         }
       }
     }
   }
 
   if(branches.length <= 1) return [];
+
+  // 指し手が同一（同等手）の場合は除外
   var firstKey = branches[0].moveKey;
   var allSame = true;
   for(var k = 1; k < branches.length; k++){
     if(branches[k].moveKey !== firstKey){allSame = false; break;}
   }
   if(allSame) return [];
+
   return branches;
 }
 
@@ -318,7 +346,6 @@ function showBranchSheet(branches, currentPly){
   document.getElementById("bsheet").style.display = "block";
 }
 
-// 🔀 分岐ボタン：現在局面に分岐がある場合のみ表示
 function showBranchModalManual(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var currentPly = (st * 2) + 1;
@@ -333,7 +360,6 @@ function showBranchModalManual(){
   }
 }
 
-// 🌲 全分岐ボタン：棋譜内の全分岐ブロックを一覧表示
 function showAllBranchesModal(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var list = document.getElementById("bs-list");
@@ -545,12 +571,6 @@ function onC(x, y){
             el.innerHTML += " 相手: " + exp.rName;
             isA = false;
             renderBoard();
-
-            var nextPly = (st * 2) + 1;
-            var branches = getBranchesAt(nextPly);
-            if(branches.length >= 2){
-              setTimeout(function(){showBranchSheet(branches, nextPly);}, 250);
-            }
           });
         }, 220);
       } else {
