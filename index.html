@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1</title>
+<title>定跡チェッカー ver.1.1</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -33,7 +33,7 @@ td.w-cell{background:#ffcdd2!important;}
 .mbox input,.mbox textarea{width:100%;border:1px solid #ccc;border-radius:4px;margin-bottom:4px;}
 .mbox input{padding:5px;}
 .mbox textarea{height:100px;font-size:12px;padding:4px;}
-.btn-b{padding:7px 10px;font-size:12px;border-radius:4px;border:none;font-weight:bold;cursor:pointer;color:#fff;}
+.btn-b{padding:7px 9px;font-size:12px;border-radius:4px;border:none;font-weight:bold;cursor:pointer;color:#fff;}
 #rbar{display:none;background:#ffebee;border:1px solid #ef5350;border-radius:4px;padding:4px;margin:2px auto;max-width:390px;}
 #d-ovl{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(46,125,50,0.85);z-index:2000;color:#fff;font-size:18px;font-weight:bold;align-items:center;justify-content:center;border:4px dashed #fff;pointer-events:none;}
 
@@ -47,7 +47,7 @@ td.w-cell{background:#ffcdd2!important;}
 </head>
 <body>
 <div id="d-ovl">📂 棋譜ファイルをドロップして登録</div>
-<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1</span></h2>
+<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.1</span></h2>
 <div class="pbar"><select id="sel" onchange="swKif()"></select><button class="btn" style="background:#c62828;" onclick="delKif()">削除</button></div>
 <div style="margin:3px 0;display:flex;justify-content:center;gap:4px;">
 <button class="btn" style="background:#d81b60;" onclick="sRec()">🔴 作成</button>
@@ -70,6 +70,7 @@ td.w-cell{background:#ffcdd2!important;}
 <button class="btn-b" style="background:#e65100;" onclick="uM()">↩️ 待った</button>
 <button class="btn-b" style="background:#0288d1;" onclick="sH()">💡 正解</button>
 <button class="btn-b" style="background:#e91e63;" onclick="showBranchModalManual()">🔀 分岐</button>
+<button class="btn-b" style="background:#455a64;" onclick="showAllBranchesModal()">🌲 全分岐</button>
 <button class="btn-b" style="background:#6a1b9a;" onclick="jumpToPly()">⏩ 手数</button>
 <button class="btn-b" style="background:#78909c;" onclick="rG()">やり直す</button>
 </div>
@@ -317,18 +318,27 @@ function showBranchSheet(branches, currentPly){
   document.getElementById("bsheet").style.display = "block";
 }
 
+// 🔀 分岐ボタン：現在局面に分岐がある場合のみ表示
 function showBranchModalManual(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var currentPly = (st * 2) + 1;
   var bAt = getBranchesAt(currentPly);
   if(bAt.length){
     showBranchSheet(bAt, currentPly);
-    return;
+  } else {
+    var el = document.getElementById("st");
+    var prevHtml = el.innerHTML;
+    el.innerHTML = '<span style="color:#e65100;">ℹ️ 現在の局面（' + currentPly + '手目）に分岐はありません</span>';
+    setTimeout(function(){ if(el.innerHTML.indexOf('分岐はありません') !== -1) el.innerHTML = prevHtml; }, 2000);
   }
-  
+}
+
+// 🌲 全分岐ボタン：棋譜内の全分岐ブロックを一覧表示
+function showAllBranchesModal(){
+  if(!parsedTree.length){alert("棋譜がありません");return;}
   var list = document.getElementById("bs-list");
   list.innerHTML = "";
-  document.getElementById("bs-title").innerText = "🔀 分岐ツリー一覧から選択";
+  document.getElementById("bs-title").innerText = "🌲 全分岐ツリーから選択";
   for(var i = 0; i < parsedTree.length; i++){
     (function(idx){
       var b = parsedTree[idx];
