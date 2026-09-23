@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.5</title>
+<title>定跡チェッカー ver.1.6</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -47,7 +47,7 @@ td.w-cell{background:#ffcdd2!important;}
 </head>
 <body>
 <div id="d-ovl">📂 棋譜ファイルをドロップして登録</div>
-<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.5</span></h2>
+<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.6</span></h2>
 <div class="pbar"><select id="sel" onchange="swKif()"></select><button class="btn" style="background:#c62828;" onclick="delKif()">削除</button></div>
 <div style="margin:3px 0;display:flex;justify-content:center;gap:4px;">
 <button class="btn" style="background:#d81b60;" onclick="sRec()">🔴 作成</button>
@@ -347,6 +347,7 @@ function showBranchSheet(branches, currentPly){
   document.getElementById("bsheet").style.display = "block";
 }
 
+// 🔀 分岐ボタン：現在局面に真の分岐がある場合のみ開く
 function showBranchModalManual(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var currentPly = (st * 2) + 1;
@@ -361,6 +362,7 @@ function showBranchModalManual(){
   }
 }
 
+// 🌲 全分岐ボタン：全変化ブロックから選んでジャンプ
 function showAllBranchesModal(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var list = document.getElementById("bs-list");
@@ -439,6 +441,13 @@ function jumpToExactPly(playCount){
   if(st < bk.length) el.innerHTML = '<span style="color:#2e7d32;">▶ ' + (st * 2) + '手目局面（▲' + bk[st].name + '）</span>';
   else el.innerText = "最終手まで進みました";
   uScr(); renderBoard();
+
+  // ジャンプ先（偶数手完了直後）に次手（先手）の分岐があるか判定
+  var nextPly = (st * 2) + 1;
+  var branches = getBranchesAt(nextPly);
+  if(branches.length >= 2){
+    showBranchSheet(branches, nextPly);
+  }
 }
 
 function jumpToPly(){
@@ -572,6 +581,13 @@ function onC(x, y){
             el.innerHTML += " 相手: " + exp.rName;
             isA = false;
             renderBoard();
+
+            // 相手の手（偶数手）が完了した直後、次の先手の手番に分岐があれば表示
+            var nextPly = (st * 2) + 1;
+            var branches = getBranchesAt(nextPly);
+            if(branches.length >= 2){
+              setTimeout(function(){showBranchSheet(branches, nextPly);}, 250);
+            }
           });
         }, 220);
       } else {
