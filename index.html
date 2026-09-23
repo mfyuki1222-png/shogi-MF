@@ -65,7 +65,55 @@ function regK(t,tx){var b=pK(tx);if(!b.length){alert("認識失敗");return;}ski
 function uD(k){var s=document.getElementById("sel");s.innerHTML="";var ks=Object.keys(skifs);for(var i=0;i<ks.length;i++){var o=document.createElement("option");o.value=ks[i];o.innerText=ks[i];if(ks[i]===k)o.selected=true;s.appendChild(o);}}
 function swKif(){if(isR)eRec();var k=document.getElementById("sel").value;if(k&&skifs[k])lB(skifs[k]);}
 function delKif(){var s=document.getElementById("sel");if(!s.value||!confirm("削除しますか？"))return;delete skifs[s.value];try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}uD();var rk=Object.keys(skifs);if(rk.length)lB(skifs[rk[0]]);else{bk=[];rG();}}
-function pK(tx){var ls=tx.split(/\r?\n/),raw=[],px=0,py=0;for(var i=0;i<ls.length;i++){var l=ls[i].trim();if(!l||l.indexOf("変化")===0)break;var p=l.split(/\s+/),ply=parseInt(p[0],10);if(isNaN(ply)||!p[1])continue;var m=p[1],tx0=m[0]==='同'?px:cm[m[0]],ty0=m[0]==='同'?py:cm[m[1]],from=null;if(m.indexOf('打')!==-1)from="h_"+m.slice(2).replace('打','').trim();else{var op=m.indexOf('('),cl=m.indexOf(')');if(op!==-1&&cl!==-1){var c=m.substring(op+1,cl);from=c[0]+","+c[1];}}if(tx0&&ty0&&from){px=tx0;py=ty0;raw.push({ply:ply,from:from,to:tx0+","+ty0,name:m.split('(')[0].trim()});}}var res=[];for(var j=0;j<raw.length;j++){var it=raw[j];if(it.ply%2===1){var nx=raw[j+1],has=nx&&(nx.ply===it.ply+1);res.push({from:it.from,to:it.to,name:"▲"+it.name,rFrom:has?nx.from:null,rTo:has?nx.to:null,rName:has?"△"+nx.name:"終了"});if(has)j++;}}return res;}
+
+// 「同 桂」等の全角スペースと「変化」行を正しく判定するパーサー
+function pK(tx){
+  var ls=tx.split(/\r?\n/),raw=[],px=0,py=0;
+  for(var i=0;i<ls.length;i++){
+    var l=ls[i].trim();
+    if(!l)continue;
+    if(l.indexOf("変化")===0)break; // 本譜手順のみ取得
+    var mRes=l.match(/^\s*(\d+)\s+([^\s\(]+(?:\s*\([^\)]+\))?)/);
+    if(!mRes)continue;
+    var ply=parseInt(mRes[1],10);
+    var fullMove=mRes[2].replace(/\s+/g,''); // 指し手内部の全角・半角スペースを除去
+    var from=null,tx0=0,ty0=0;
+
+    if(fullMove.indexOf("同")===0){
+      tx0=px;ty0=py;
+    }else{
+      tx0=cm[fullMove[0]];
+      ty0=cm[fullMove[1]];
+    }
+
+    if(fullMove.indexOf('打')!==-1){
+      var ptName=fullMove.replace(/^同/,'').slice(fullMove.indexOf("同")===0?0:2).replace('打','').trim();
+      from="h_"+ptName;
+    }else{
+      var op=fullMove.indexOf('('),cl=fullMove.indexOf(')');
+      if(op!==-1&&cl!==-1){
+        var c=fullMove.substring(op+1,cl);
+        from=c[0]+","+c[1];
+      }
+    }
+
+    if(tx0&&ty0&&from){
+      px=tx0;py=ty0;
+      raw.push({ply:ply,from:from,to:tx0+","+ty0,name:fullMove.split('(')[0].trim()});
+    }
+  }
+  var res=[];
+  for(var j=0;j<raw.length;j++){
+    var it=raw[j];
+    if(it.ply%2===1){
+      var nx=raw[j+1],has=nx&&(nx.ply===it.ply+1);
+      res.push({from:it.from,to:it.to,name:"▲"+it.name,rFrom:has?nx.from:null,rTo:has?nx.to:null,rName:has?"△"+nx.name:"終了"});
+      if(has)j++;
+    }
+  }
+  return res;
+}
+
 function lB(tx){bk=pK(tx);rG();}
 function initB(){bS={};sHnd={};gHnd={};hst=[];for(var x=1;x<=9;x++){bS[x+",7"]={t:"歩",g:0};bS[x+",3"]={t:"歩",g:1};}var b=["香","桂","銀","金","玉","金","銀","桂","香"];for(var i=1;i<=9;i++){bS[(10-i)+",9"]={t:b[i-1],g:0};bS[i+",1"]={t:b[i-1]==="玉"?"王":b[i-1],g:1};}bS["2,8"]={t:"飛",g:0};bS["8,8"]={t:"角",g:0};bS["8,2"]={t:"飛",g:1};bS["2,2"]={t:"角",g:1};}
 function uScr(){var el=document.getElementById("sb");if(isR||!bk||!bk.length){el.style.display="none";return;}el.style.display="flex";var rt=st===0?100:Math.round((cCnt/st)*100);el.innerHTML='<span>手番: '+(st+1)+'/'+bk.length+'</span><span>正答率: '+rt+'% ('+cCnt+'/'+st+')</span>';}
@@ -139,7 +187,7 @@ window.addEventListener("drop",function(e){
 });
 
 initB();try{var d=localStorage.getItem("skifs_min");if(d)skifs=JSON.parse(d);}catch(e){skifs={};}
-if(!skifs||!Object.keys(skifs).length){skifs={"エルモ囲い（基本形）":defK};try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}}
+if(!skifs||!Object.keys(skifs).length){skifs={"エルモ囲い（基本形）":defK};try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){} }
 uD("エルモ囲い（基本形）");bk=pK(skifs["エルモ囲い（基本形）"]);renderBoard();uScr();
 </script>
 </body>
