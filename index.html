@@ -20,7 +20,7 @@ td.sel,.hp.sel .piece{background:#d4e157!important;}td.h-from{background:#81d4fa
 .fly{position:fixed;z-index:999;pointer-events:none;will-change:transform;transition:transform .18s cubic-bezier(.2,.8,.4,1);}.fly.gote{color:#900;background:#fff5eb;}
 .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;}
 .mbox{background:#fff;width:92%;max-width:350px;padding:10px;border-radius:6px;text-align:left;}.mbox input,.mbox textarea{width:100%;border:1px solid #ccc;border-radius:4px;margin-bottom:4px;}
-.mbox input{padding:5px;}.mbox textarea{height:100px;font-size:12px;padding:4px;}.btn-b{padding:7px 12px;font-size:13px;border-radius:4px;border:none;font-weight:bold;cursor:pointer;color:#fff;}
+.mbox input{padding:5px;}.mbox textarea{height:100px;font-size:12px;padding:4px;}.btn-b{padding:7px 10px;font-size:12px;border-radius:4px;border:none;font-weight:bold;cursor:pointer;color:#fff;}
 #rbar{display:none;background:#ffebee;border:1px solid #ef5350;border-radius:4px;padding:4px;margin:2px auto;max-width:390px;}
 #d-ovl{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(46,125,50,0.85);z-index:2000;color:#fff;font-size:18px;font-weight:bold;align-items:center;justify-content:center;border:4px dashed #fff;pointer-events:none;}
 </style>
@@ -45,13 +45,14 @@ td.sel,.hp.sel .piece{background:#d4e157!important;}td.h-from{background:#81d4fa
 <div class="hand" id="gh"></div>
 <div id="bbox"><table id="tbl"><tbody id="tb"></tbody></table></div>
 <div class="hand" id="sh"></div>
-<div id="pbtns" style="margin-top:6px;display:flex;justify-content:center;gap:5px;">
+<div id="pbtns" style="margin-top:6px;display:flex;justify-content:center;gap:4px;flex-wrap:wrap;">
 <button class="btn-b" style="background:#e65100;" onclick="uM()">↩️ 待った</button>
 <button class="btn-b" style="background:#0288d1;" onclick="sH()">💡 正解</button>
+<button class="btn-b" style="background:#6a1b9a;" onclick="jumpToPly()">⏩ 手数指定</button>
 <button class="btn-b" style="background:#78909c;" onclick="rG()">やり直す</button>
 </div>
 <script>
-var skifs={},bk=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[];
+var skifs={},bk=[],rawMoves=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[];
 var cm={'１':1,'２':2,'３':3,'４':4,'５':5,'６':6,'７':7,'８':8,'９':9,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
 var zn=["","１","２","３","４","５","６","７","８","９"],kn=["","一","二","三","四","五","六","七","八","九"];
 var unp={"と":"歩","成香":"香","成桂":"桂","成銀":"銀","馬":"角","竜":"飛","龍":"飛"};
@@ -74,7 +75,7 @@ function uD(k){
     s.appendChild(o);
   }
 }
-function swKif(){if(isR)eRec();var k=document.getElementById("sel").value;if(k&&skifs[k])lB(skifs[k]);else{bk=[];rG();}}
+function swKif(){if(isR)eRec();var k=document.getElementById("sel").value;if(k&&skifs[k])lB(skifs[k]);else{bk=[];rawMoves=[];rG();}}
 function delKif(){
   var s=document.getElementById("sel");
   if(!s.value||!confirm("「"+s.value+"」を削除しますか？"))return;
@@ -83,12 +84,12 @@ function delKif(){
   var rk=Object.keys(skifs);
   uD(rk.length?rk[0]:"");
   if(rk.length)lB(skifs[rk[0]]);
-  else{bk=[];rG();}
+  else{bk=[];rawMoves=[];rG();}
 }
 
-// 駒打ち、同○、成りを正確に解析
 function pK(tx){
-  var ls=tx.split(/\r?\n/),raw=[],px=0,py=0;
+  var ls=tx.split(/\r?\n/),px=0,py=0;
+  rawMoves=[];
   for(var i=0;i<ls.length;i++){
     var l=ls[i].trim();
     if(!l)continue;
@@ -119,15 +120,23 @@ function pK(tx){
 
     if(tx0&&ty0&&from){
       px=tx0;py=ty0;
-      raw.push({ply:ply,from:from,to:tx0+","+ty0,name:moveCore.replace(/\([^\)]*\)/g,'')});
+      rawMoves.push({ply:ply,from:from,to:tx0+","+ty0,name:moveCore.replace(/\([^\)]*\)/g,'')});
     }
   }
   var res=[];
-  for(var j=0;j<raw.length;j++){
-    var it=raw[j];
+  for(var j=0;j<rawMoves.length;j++){
+    var it=rawMoves[j];
     if(it.ply%2===1){
-      var nx=raw[j+1],has=nx&&(nx.ply===it.ply+1);
-      res.push({from:it.from,to:it.to,name:"▲"+it.name,rFrom:has?nx.from:null,rTo:has?nx.to:null,rName:has?"△"+nx.name:"終了"});
+      var nx=rawMoves[j+1],has=nx&&(nx.ply===it.ply+1);
+      res.push({
+        ply:it.ply,
+        from:it.from,
+        to:it.to,
+        name:"▲"+it.name,
+        rFrom:has?nx.from:null,
+        rTo:has?nx.to:null,
+        rName:has?"△"+nx.name:"終了"
+      });
       if(has)j++;
     }
   }
@@ -142,9 +151,64 @@ function initB(){
   for(var i=1;i<=9;i++){bS[(10-i)+",9"]={t:b[i-1],g:0};bS[i+",1"]={t:b[i-1]==="玉"?"王":b[i-1],g:1};}
   bS["2,8"]={t:"飛",g:0};bS["8,8"]={t:"角",g:0};bS["8,2"]={t:"飛",g:1};bS["2,2"]={t:"角",g:1};
 }
-function uScr(){var el=document.getElementById("sb");if(isR||!bk||!bk.length){el.style.display="none";return;}el.style.display="flex";var rt=st===0?100:Math.round((cCnt/st)*100);el.innerHTML='<span>手番: '+(st+1)+'/'+bk.length+'</span><span>正答率: '+rt+'% ('+cCnt+'/'+st+')</span>';}
+function uScr(){
+  var el=document.getElementById("sb");
+  if(isR||!bk||!bk.length){el.style.display="none";return;}
+  el.style.display="flex";
+  var currentPly=st*2;
+  var totalPly=rawMoves.length;
+  var rt=st===0?100:Math.round((cCnt/st)*100);
+  el.innerHTML='<span>手数: '+currentPly+'/'+totalPly+'手</span><span>正答率: '+rt+'% ('+cCnt+'/'+st+')</span>';
+}
 function svH(){hst.push({b:JSON.parse(JSON.stringify(bS)),sh:JSON.parse(JSON.stringify(sHnd)),gh:JSON.parse(JSON.stringify(gHnd)),st:st,tx:document.getElementById("st").innerHTML,rt:rTurn,rl:rLines.slice(),cc:cCnt,hf:hFail});}
 function uM(){if(isA||!hst.length)return;var p=hst.pop();bS=p.b;sHnd=p.sh;gHnd=p.gh;st=p.st;sF=null;hI=null;cCnt=p.cc;hFail=p.hf;if(isR){rTurn=p.rt;rLines=p.rl;uRSt();}else{document.getElementById("st").innerHTML=p.tx;uScr();}renderBoard();}
+
+// 手数指定ジャンプ機能
+function jumpToPly(){
+  if(!rawMoves.length){alert("棋譜が読み込まれていません");return;}
+  var maxPly=rawMoves.length;
+  var input=prompt("何手目まで進めて練習しますか？ (0〜"+maxPly+"手目):", (st*2).toString());
+  if(input===null)return;
+  var target=parseInt(input,10);
+  if(isNaN(target)||target<0||target>maxPly){alert("0から"+maxPly+"の数値を入力してください");return;}
+
+  // 先手の手番（奇数手目）から練習が始まるよう、偶数手まで再生して待機
+  var playCount=target;
+  if(playCount%2!==0) playCount--; // 奇数手指定ならその直前の偶数手（相手の手完了時）に合わせる
+
+  initB();
+  for(var i=0;i<playCount;i++){
+    var m=rawMoves[i];
+    var isG=(i%2===1);
+    var isD=(m.from.indexOf("h_")===0);
+    var ptName=isD?m.from.replace("h_",""):(bS[m.from]?bS[m.from].t:"歩");
+
+    if(!isD&&m.name.indexOf("成")!==-1&&ptName.indexOf("成")===-1){
+      if(ptName==="角")ptName="馬";else if(ptName==="飛")ptName="竜";else if(ptName==="歩")ptName="と";
+      else if(ptName==="銀")ptName="成銀";else if(ptName==="桂")ptName="成桂";else if(ptName==="香")ptName="成香";
+    }
+
+    if(!isD) delete bS[m.from];
+    else{
+      if(isG) gHnd[ptName]--;
+      else sHnd[ptName]--;
+    }
+
+    if(bS[m.to]){
+      var cap=unp[bS[m.to].t]||bS[m.to].t;
+      if(isG) gHnd[cap]=(gHnd[cap]||0)+1;
+      else sHnd[cap]=(sHnd[cap]||0)+1;
+    }
+    bS[m.to]={t:ptName,g:isG?1:0};
+  }
+
+  st=playCount/2;
+  sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;
+  var el=document.getElementById("st");
+  if(st<bk.length) el.innerHTML='<span style="color:#2e7d32;">▶ '+playCount+'手目局面から再開（▲'+bk[st].name+'）</span>';
+  else el.innerText="定跡の最終手まで進みました";
+  uScr();renderBoard();
+}
 
 function renderBoard(wK){
   var tb=document.getElementById("tb");tb.innerHTML="";
@@ -302,7 +366,7 @@ function rG(){
 }
 function oSync(){document.getElementById("sx").value=localStorage.getItem("skifs_min")||JSON.stringify(skifs);oM("smodal");}
 function cSync(){document.getElementById("sx").select();document.execCommand("copy");alert("コピー完了");}
-function aSync(){try{skifs=JSON.parse(document.getElementById("sx").value.trim());localStorage.setItem("skifs_min",JSON.stringify(skifs));var rk=Object.keys(skifs);uD(rk.length?rk[0]:"");if(rk.length)lB(skifs[rk[0]]);else{bk=[];rG();}cM("smodal");alert("同期完了");}catch(e){alert("形式不正");}}
+function aSync(){try{skifs=JSON.parse(document.getElementById("sx").value.trim());localStorage.setItem("skifs_min",JSON.stringify(skifs));var rk=Object.keys(skifs);uD(rk.length?rk[0]:"");if(rk.length)lB(skifs[rk[0]]);else{bk=[];rawMoves=[];rG();}cM("smodal");alert("同期完了");}catch(e){alert("形式不正");}}
 
 window.addEventListener("dragover",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="flex";});
 window.addEventListener("dragleave",function(e){if(e.clientX<=0||e.clientY<=0){var d=document.getElementById("d-ovl");if(d)d.style.display="none";}});
@@ -321,7 +385,7 @@ if(skifs && skifs["エルモ囲い（基本形）"]){
 var ks=Object.keys(skifs);
 uD(ks.length?ks[0]:"");
 if(ks.length)lB(skifs[ks[0]]);
-else{bk=[];rG();}
+else{bk=[];rawMoves=[];rG();}
 </script>
 </body>
 </html>
