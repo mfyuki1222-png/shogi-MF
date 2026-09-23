@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.4</title>
+<title>定跡チェッカー ver.1.5</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -47,7 +47,7 @@ td.w-cell{background:#ffcdd2!important;}
 </head>
 <body>
 <div id="d-ovl">📂 棋譜ファイルをドロップして登録</div>
-<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.4</span></h2>
+<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.5</span></h2>
 <div class="pbar"><select id="sel" onchange="swKif()"></select><button class="btn" style="background:#c62828;" onclick="delKif()">削除</button></div>
 <div style="margin:3px 0;display:flex;justify-content:center;gap:4px;">
 <button class="btn" style="background:#d81b60;" onclick="sRec()">🔴 作成</button>
@@ -204,11 +204,13 @@ function parseFullKif(tx){
   return blocks;
 }
 
-// 特定ブロックがどの手順を前提にしているかを完全構築する関数
+// 変化の親は常に「本譜（blockIndex: 0）」として構築
 function getFullSequenceForBlock(blockIndex){
   var target = parsedTree[blockIndex];
   if(!target) return [];
-  if(target.startPly === 1){
+
+  // 本譜ブロック
+  if(target.startPly === 1 || blockIndex === 0){
     var seq0 = [], px0 = 0, py0 = 0;
     for(var j = 0; j < target.lines.length; j++){
       var pm = parseLineMove(target.lines[j], px0, py0);
@@ -217,20 +219,22 @@ function getFullSequenceForBlock(blockIndex){
     return seq0;
   }
 
-  // 親となるブロックの手順を探す（直前ブロックから直近で該当手数のあったものを親とする）
-  var parentSeq = [];
-  for(var p = blockIndex - 1; p >= 0; p--){
-    var pSeq = getFullSequenceForBlock(p);
-    if(pSeq.length >= target.startPly - 1){
-      parentSeq = pSeq.slice(0, target.startPly - 1);
-      break;
-    }
+  // 変化ブロックの親は常に本譜
+  var mainTarget = parsedTree[0];
+  var mainSeq = [];
+  var mPx = 0, mPy = 0;
+  for(var m = 0; m < mainTarget.lines.length; m++){
+    var mPm = parseLineMove(mainTarget.lines[m], mPx, mPy);
+    if(mPm){ mPx = mPm.tx; mPy = mPm.ty; mainSeq.push(mPm); }
   }
 
+  // 変化開始直前（target.startPly - 1 手目）までの本譜を継承
+  var parentSeq = mainSeq.slice(0, target.startPly - 1);
   var px = parentSeq.length ? parentSeq[parentSeq.length - 1].tx : 0;
   var py = parentSeq.length ? parentSeq[parentSeq.length - 1].ty : 0;
   var fullSeq = parentSeq.slice();
 
+  // 変化手順を結合
   for(var k = 0; k < target.lines.length; k++){
     var pm2 = parseLineMove(target.lines[k], px, py);
     if(pm2){ px = pm2.tx; py = pm2.ty; fullSeq.push(pm2); }
@@ -265,7 +269,7 @@ function lB(tx, kName){
   rG();
 }
 
-// 局面の完全突合による真の分岐判定
+// 局面の着手履歴突合による真の分岐判定
 function getBranchesAt(ply){
   var branches = [];
   if(!rawMoves || rawMoves.length < ply) return [];
@@ -279,17 +283,15 @@ function getBranchesAt(ply){
     moveKey: curMove.from + "->" + curMove.to
   });
 
-  // 全変化ブロックを検証
+  // 各変化ブロックと突合
   for(var i = 0; i < parsedTree.length; i++){
     if(i === currentBlockIndex) continue;
     var b = parsedTree[i];
     
-    // 分岐開始手数が一致しているか
     if(b.startPly === ply){
-      // その変化ブロックの「分岐直前（ply - 1手目）までの全着手」を取得
       var bSeq = getFullSequenceForBlock(i);
       if(bSeq.length >= ply){
-        // 1手目から ply - 1 手目までの着手履歴が現在と完全一致するか検証
+        // 1手目から ply - 1 手目までの着手履歴が現在の手順と完全一致するか検証
         var isIdenticalHistory = true;
         for(var step = 0; step < ply - 1; step++){
           if(bSeq[step].from !== rawMoves[step].from || bSeq[step].to !== rawMoves[step].to){
@@ -298,7 +300,6 @@ function getBranchesAt(ply){
           }
         }
 
-        // 過去の着手履歴が完全に一致している場合のみ、真の分岐手として採用
         if(isIdenticalHistory){
           var candMove = bSeq[ply - 1];
           branches.push({
