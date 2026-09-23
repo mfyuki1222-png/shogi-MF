@@ -660,8 +660,16 @@ function cSync(){document.getElementById("sx").select(); document.execCommand("c
 function aSync(){
   try{
     var raw = document.getElementById("sx").value.trim();
-    // LINEやメール等を経由した際に混入する「実際の改行」や「スマートクォート」を無害化
-    raw = raw.replace(/(?:\r\n|\r|\n)/g, '').replace(/[“”]/g, '"');
+    
+    // 1. iOS/Mac経由で化けやすい円記号(¥)をバックスラッシュ(\)に修復
+    raw = raw.replace(/¥/g, '\\');
+    
+    // 2. 実際の改行が混入した場合、改行を消すのではなくJSONのエスケープ改行(\\n)に変換する
+    raw = raw.replace(/(?:\r\n|\r|\n)/g, '\\n');
+    
+    // 3. スマートクォートの無害化
+    raw = raw.replace(/[“”]/g, '"');
+    
     skifs = JSON.parse(raw);
     localStorage.setItem("skifs_min", JSON.stringify(skifs));
     var rk = Object.keys(skifs);
