@@ -86,6 +86,7 @@ function delKif(){
   else{bk=[];rG();}
 }
 
+// 駒打ち、同○、成りを正確に解析
 function pK(tx){
   var ls=tx.split(/\r?\n/),raw=[],px=0,py=0;
   for(var i=0;i<ls.length;i++){
@@ -134,62 +135,161 @@ function pK(tx){
 }
 
 function lB(tx){bk=pK(tx);rG();}
-function initB(){bS={};sHnd={};gHnd={};hst=[];for(var x=1;x<=9;x++){bS[x+",7"]={t:"歩",g:0};bS[x+",3"]={t:"歩",g:1};}var b=["香","桂","銀","金","玉","金","銀","桂","香"];for(var i=1;i<=9;i++){bS[(10-i)+",9"]={t:b[i-1],g:0};bS[i+",1"]={t:b[i-1]==="玉"?"王":b[i-1],g:1};}bS["2,8"]={t:"飛",g:0};bS["8,8"]={t:"角",g:0};bS["8,2"]={t:"飛",g:1};bS["2,2"]={t:"角",g:1};}
+function initB(){
+  bS={};sHnd={};gHnd={};hst=[];
+  for(var x=1;x<=9;x++){bS[x+",7"]={t:"歩",g:0};bS[x+",3"]={t:"歩",g:1};}
+  var b=["香","桂","銀","金","玉","金","銀","桂","香"];
+  for(var i=1;i<=9;i++){bS[(10-i)+",9"]={t:b[i-1],g:0};bS[i+",1"]={t:b[i-1]==="玉"?"王":b[i-1],g:1};}
+  bS["2,8"]={t:"飛",g:0};bS["8,8"]={t:"角",g:0};bS["8,2"]={t:"飛",g:1};bS["2,2"]={t:"角",g:1};
+}
 function uScr(){var el=document.getElementById("sb");if(isR||!bk||!bk.length){el.style.display="none";return;}el.style.display="flex";var rt=st===0?100:Math.round((cCnt/st)*100);el.innerHTML='<span>手番: '+(st+1)+'/'+bk.length+'</span><span>正答率: '+rt+'% ('+cCnt+'/'+st+')</span>';}
 function svH(){hst.push({b:JSON.parse(JSON.stringify(bS)),sh:JSON.parse(JSON.stringify(sHnd)),gh:JSON.parse(JSON.stringify(gHnd)),st:st,tx:document.getElementById("st").innerHTML,rt:rTurn,rl:rLines.slice(),cc:cCnt,hf:hFail});}
 function uM(){if(isA||!hst.length)return;var p=hst.pop();bS=p.b;sHnd=p.sh;gHnd=p.gh;st=p.st;sF=null;hI=null;cCnt=p.cc;hFail=p.hf;if(isR){rTurn=p.rt;rLines=p.rl;uRSt();}else{document.getElementById("st").innerHTML=p.tx;uScr();}renderBoard();}
+
 function renderBoard(wK){
-var tb=document.getElementById("tb");tb.innerHTML="";
-for(var y=1;y<=9;y++){var tr=document.createElement("tr");for(var x=9;x>=1;x--){var td=document.createElement("td"),k=x+","+y;td.id="c_"+k;if(sF===k)td.className="sel";if(hI&&hI.from===k)td.className="h-from";if(hI&&hI.to===k)td.className="h-to";if(wK===k)td.className="w-cell";var p=bS[k];if(p){var sp=document.createElement("span");sp.className="piece";sp.innerText=p.t;if(p.g)td.className+=" gote";td.appendChild(sp);}(function(cx,cy){td.onclick=function(){onC(cx,cy);};})(x,y);tr.appendChild(td);}tb.appendChild(tr);}
-var sh=document.getElementById("sh"),gh=document.getElementById("gh");sh.innerHTML='<span style="font-size:11px;font-weight:bold;">先手:</span>';gh.innerHTML='<span style="font-size:11px;font-weight:bold;">後手:</span>';
-for(var sp in sHnd){if(sHnd[sp]>0)(function(pn){var d=document.createElement("div");d.id="hs_"+pn;d.className="hp"+(sF==="h_"+pn?" sel":"");d.innerHTML='<span class="piece">'+pn+'</span>'+(sHnd[pn]>1?'<span class="hcnt">'+sHnd[pn]+'</span>':'');d.onclick=function(){if(!isA&&(!isR||rTurn===0)){hI=null;sF=(sF==="h_"+pn)?null:"h_"+pn;renderBoard();}};sh.appendChild(d);})(sp);}
-for(var gp in gHnd){if(gHnd[gp]>0)(function(gpn){var d=document.createElement("div");d.id="hg_"+gpn;d.className="hp gote"+(sF==="h_g_"+gpn?" sel":"");d.innerHTML='<span class="piece">'+gpn+'</span>'+(gHnd[gp]>1?'<span class="hcnt">'+gHnd[gp]+'</span>':'');d.onclick=function(){if(!isA&&isR&&rTurn===1){hI=null;sF=(sF==="h_g_"+gpn)?null:"h_g_"+gpn;renderBoard();}};gh.appendChild(d);})(gp);}
+  var tb=document.getElementById("tb");tb.innerHTML="";
+  for(var y=1;y<=9;y++){
+    var tr=document.createElement("tr");
+    for(var x=9;x>=1;x--){
+      var td=document.createElement("td"),k=x+","+y;td.id="c_"+k;
+      if(sF===k)td.className="sel";
+      if(hI&&hI.from===k)td.className="h-from";
+      if(hI&&hI.to===k)td.className="h-to";
+      if(wK===k)td.className="w-cell";
+      var p=bS[k];
+      if(p){var sp=document.createElement("span");sp.className="piece";sp.innerText=p.t;if(p.g)td.className+=" gote";td.appendChild(sp);}
+      (function(cx,cy){td.onclick=function(){onC(cx,cy);};})(x,y);
+      tr.appendChild(td);
+    }
+    tb.appendChild(tr);
+  }
+  var sh=document.getElementById("sh"),gh=document.getElementById("gh");
+  sh.innerHTML='<span style="font-size:11px;font-weight:bold;">先手:</span>';
+  gh.innerHTML='<span style="font-size:11px;font-weight:bold;">後手:</span>';
+  for(var sp in sHnd){
+    if(sHnd[sp]>0)(function(pn){
+      var d=document.createElement("div");d.id="hs_"+pn;d.className="hp"+(sF===("h_"+pn)?" sel":"");
+      d.innerHTML='<span class="piece">'+pn+'</span>'+(sHnd[pn]>1?'<span class="hcnt">'+sHnd[pn]+'</span>':'');
+      d.onclick=function(){if(!isA&&(!isR||rTurn===0)){hI=null;sF=(sF===("h_"+pn))?null:("h_"+pn);renderBoard();}};
+      sh.appendChild(d);
+    })(sp);
+  }
+  for(var gp in gHnd){
+    if(gHnd[gp]>0)(function(gpn){
+      var d=document.createElement("div");d.id="hg_"+gpn;d.className="hp gote"+(sF===("h_g_"+gpn)?" sel":"");
+      d.innerHTML='<span class="piece">'+gpn+'</span>'+(gHnd[gp]>1?'<span class="hcnt">'+gHnd[gp]+'</span>':'');
+      d.onclick=function(){if(!isA&&isR&&rTurn===1){hI=null;sF=(sF===("h_g_"+gpn))?null:("h_g_"+gpn);renderBoard();}};
+      gh.appendChild(d);
+    })(gp);
+  }
 }
+
 function anim(fk,tk,tx,isG,cb){
-var frEl=(fk.indexOf("h_")===0)?document.getElementById((isG?"hg_":"hs_")+fk.replace("h_g_","").replace("h_","")):document.getElementById("c_"+fk);
-if(!frEl)frEl=document.getElementById(isG?"gh":"sh");
-var trEl=document.getElementById("c_"+tk);
-if(!frEl||!trEl){cb();return;}
-var fr=frEl.getBoundingClientRect(),tr=trEl.getBoundingClientRect();
-var sx=fr.left+(fr.width-tr.width*.85)/2,sy=fr.top+(fr.height-tr.height*.85)/2,ex=tr.left+(tr.width-tr.width*.85)/2,ey=tr.top+(tr.height-tr.height*.85)/2;
-var fl=document.createElement("div");fl.className="piece fly"+(isG?" gote":"");fl.innerText=tx;fl.style.left="0";fl.style.top="0";
-fl.style.transform="translate3d("+sx+"px,"+sy+"px,0)"+(isG?" rotate(180deg)":"");document.body.appendChild(fl);
-requestAnimationFrame(function(){requestAnimationFrame(function(){fl.style.transform="translate3d("+ex+"px,"+ey+"px,0)"+(isG?" rotate(180deg)":"");});});
-setTimeout(function(){if(fl.parentNode)fl.parentNode.removeChild(fl);cb();},190);
+  var frEl=(fk.indexOf("h_")===0)?document.getElementById((isG?"hg_":"hs_")+fk.replace("h_g_","").replace("h_","")):document.getElementById("c_"+fk);
+  if(!frEl)frEl=document.getElementById(isG?"gh":"sh");
+  var trEl=document.getElementById("c_"+tk);
+  if(!frEl||!trEl){cb();return;}
+  var fr=frEl.getBoundingClientRect(),tr=trEl.getBoundingClientRect();
+  var sx=fr.left+(fr.width-tr.width*.85)/2,sy=fr.top+(fr.height-tr.height*.85)/2,ex=tr.left+(tr.width-tr.width*.85)/2,ey=tr.top+(tr.height-tr.height*.85)/2;
+  var fl=document.createElement("div");fl.className="piece fly"+(isG?" gote":"");fl.innerText=tx;fl.style.left="0";fl.style.top="0";
+  fl.style.transform="translate3d("+sx+"px,"+sy+"px,0)"+(isG?" rotate(180deg)":"");document.body.appendChild(fl);
+  requestAnimationFrame(function(){requestAnimationFrame(function(){fl.style.transform="translate3d("+ex+"px,"+ey+"px,0)"+(isG?" rotate(180deg)":"");});});
+  setTimeout(function(){if(fl.parentNode)fl.parentNode.removeChild(fl);cb();},190);
 }
+
 function onC(x,y){
-if(isA)return;var k=x+","+y;if(isR){hRec(x,y,k);return;}
-var el=document.getElementById("st");hI=null;
-if(!bk.length){el.innerText="棋譜を登録または選択してください";return;}
-if(!sF){if(bS[k]&&!bS[k].g){sF=k;renderBoard();}return;}
-if(sF===k){sF=null;renderBoard();return;}
-if(sF.indexOf("h_")!==0&&bS[k]&&!bS[k].g){sF=k;renderBoard();return;}
-var from=sF,to=k;sF=null;if(st>=bk.length)return;
-var exp=bk[st],pt=(from.indexOf("h_")===0)?from.replace("h_",""):bS[from].t;
-if(exp.from===from&&exp.to===to){
-svH();isA=true;if(!hFail)cCnt++;
-if(exp.name.indexOf("成")!==-1&&pt.indexOf("成")===-1){if(pt==="角")pt="馬";else if(pt==="飛")pt="竜";else if(pt==="歩")pt="と";else if(pt==="銀")pt="成銀";else if(pt==="桂")pt="成桂";else if(pt==="香")pt="成香";}
-if(from.indexOf("h_")!==0)delete bS[from];renderBoard();
-anim(from,to,pt,0,function(){
-if(bS[to])sHnd[unp[bS[to].t]||bS[to].t]=(sHnd[unp[bS[to].t]||bS[to].t]||0)+1;
-if(from.indexOf("h_")===0)sHnd[from.replace("h_","")]--;
-bS[to]={t:pt,g:0};st++;hFail=false;uScr();renderBoard();
-if(exp.rFrom&&exp.rTo){el.innerHTML='<span style="color:#1b5e20;">◯ 正解 ('+exp.name+')</span>';setTimeout(function(){var rpt=(exp.rFrom.indexOf("h_")===0)?exp.rFrom.replace("h_",""):(bS[exp.rFrom]?bS[exp.rFrom].t:"歩");if(exp.rName.indexOf("成")!==-1&&rpt.indexOf("成")===-1){if(rpt==="角")rpt="馬";else if(rpt==="飛")rpt="竜";else if(rpt==="歩")rpt="と";else if(rpt==="銀")rpt="成銀";else if(rpt==="桂")rpt="成桂";else if(rpt==="香")rpt="成香";}if(exp.rFrom.indexOf("h_")!==0)delete bS[exp.rFrom];renderBoard();anim(exp.rFrom,exp.rTo,rpt,1,function(){if(bS[exp.rTo])gHnd[unp[bS[exp.rTo].t]||bS[exp.rTo].t]=(gHnd[unp[bS[exp.rTo].t]||bS[exp.rTo].t]||0)+1;if(exp.rFrom.indexOf("h_")===0)gHnd[exp.rFrom.replace("h_","")]--;bS[exp.rTo]={t:rpt,g:1};el.innerHTML+=" 相手: "+exp.rName;isA=false;renderBoard();});},220);}
-else{var fr=Math.round((cCnt/bk.length)*100);el.innerHTML='<span style="color:#1b5e20;">◯ 完了！ 正答率: '+fr+'%</span>';isA=false;}
-});
-}else{
-hFail=true;isA=true;var op=bS[from];if(from.indexOf("h_")!==0)delete bS[from];renderBoard();
-anim(from,to,pt,0,function(){el.innerHTML='<span style="color:#c62828;">× 定跡外れ！</span>';renderBoard(to);setTimeout(function(){anim(to,from,pt,0,function(){if(from.indexOf("h_")!==0)bS[from]=op;isA=false;renderBoard();});},450);});
+  if(isA)return;var k=x+","+y;if(isR){hRec(x,y,k);return;}
+  var el=document.getElementById("st");hI=null;
+  if(!bk.length){el.innerText="棋譜を登録または選択してください";return;}
+  if(!sF){if(bS[k]&&!bS[k].g){sF=k;renderBoard();}return;}
+  if(sF===k){sF=null;renderBoard();return;}
+  if(sF.indexOf("h_")!==0&&bS[k]&&!bS[k].g){sF=k;renderBoard();return;}
+
+  var from=sF,to=k;sF=null;if(st>=bk.length)return;
+  var exp=bk[st];
+  var isDrop=(from.indexOf("h_")===0);
+  var pt=isDrop?from.replace("h_",""):bS[from].t;
+
+  if(exp.from===from&&exp.to===to){
+    svH();isA=true;if(!hFail)cCnt++;
+    if(!isDrop&&exp.name.indexOf("成")!==-1&&pt.indexOf("成")===-1){
+      if(pt==="角")pt="馬";else if(pt==="飛")pt="竜";else if(pt==="歩")pt="と";
+      else if(pt==="銀")pt="成銀";else if(pt==="桂")pt="成桂";else if(pt==="香")pt="成香";
+    }
+    if(!isDrop)delete bS[from];renderBoard();
+    anim(from,to,pt,0,function(){
+      if(bS[to]){
+        var cap=unp[bS[to].t]||bS[to].t;
+        sHnd[cap]=(sHnd[cap]||0)+1;
+      }
+      if(isDrop){
+        sHnd[pt]--;
+      }
+      bS[to]={t:pt,g:0};st++;hFail=false;uScr();renderBoard();
+      if(exp.rFrom&&exp.rTo){
+        el.innerHTML='<span style="color:#1b5e20;">◯ 正解 ('+exp.name+')</span>';
+        setTimeout(function(){
+          var isRDrop=(exp.rFrom.indexOf("h_")===0);
+          var rpt=isRDrop?exp.rFrom.replace("h_",""):(bS[exp.rFrom]?bS[exp.rFrom].t:"歩");
+          if(!isRDrop&&exp.rName.indexOf("成")!==-1&&rpt.indexOf("成")===-1){
+            if(rpt==="角")rpt="馬";else if(rpt==="飛")rpt="竜";else if(rpt==="歩")rpt="と";
+            else if(rpt==="銀")rpt="成銀";else if(rpt==="桂")rpt="成桂";else if(rpt==="香")rpt="成香";
+          }
+          if(!isRDrop)delete bS[exp.rFrom];renderBoard();
+          anim(exp.rFrom,exp.rTo,rpt,1,function(){
+            if(bS[exp.rTo]){
+              var rCap=unp[bS[exp.rTo].t]||bS[exp.rTo].t;
+              gHnd[rCap]=(gHnd[rCap]||0)+1;
+            }
+            if(isRDrop){
+              gHnd[rpt]--;
+            }
+            bS[exp.rTo]={t:rpt,g:1};el.innerHTML+=" 相手: "+exp.rName;isA=false;renderBoard();
+          });
+        },220);
+      }else{
+        var fr=Math.round((cCnt/bk.length)*100);el.innerHTML='<span style="color:#1b5e20;">◯ 完了！ 正答率: '+fr+'%</span>';isA=false;
+      }
+    });
+  }else{
+    hFail=true;isA=true;var op=isDrop?null:bS[from];if(!isDrop)delete bS[from];renderBoard();
+    anim(from,to,pt,0,function(){
+      el.innerHTML='<span style="color:#c62828;">× 定跡外れ！</span>';renderBoard(to);
+      setTimeout(function(){
+        anim(to,from,pt,0,function(){if(!isDrop)bS[from]=op;isA=false;renderBoard();});
+      },450);
+    });
+  }
 }
-}
+
 function sRec(){isR=true;rTurn=0;rLines=[];document.getElementById("rbar").style.display="block";document.getElementById("pbtns").style.display="none";document.getElementById("sb").style.display="none";initB();uRSt();renderBoard();}
 function eRec(){isR=false;document.getElementById("rbar").style.display="none";document.getElementById("pbtns").style.display="flex";rG();}
 function uRSt(){document.getElementById("st").innerHTML='<span style="color:#d81b60;">🔴 記録中: '+(rTurn===0?"▲先手":"△後手")+' ('+rLines.length+'手完了)</span>';}
 function hRec(x,y,k){
-var isG=rTurn===1;if(!sF){if(bS[k]&&bS[k].g===(isG?1:0)){sF=k;renderBoard();}return;}if(sF===k){sF=null;renderBoard();return;}if(sF.indexOf("h_")!==0&&bS[k]&&bS[k].g===(isG?1:0)){sF=k;renderBoard();return;}
-var from=sF;sF=null;var isD=from.indexOf("h_")===0,pn="",fc="";svH();isA=true;
-if(isD){pn=from.replace(isG?"h_g_":"h_","");if(isG)gHnd[pn]--;else sHnd[pn]--;bS[k]={t:pn,g:isG?1:0};anim(from,k,pn,isG?1:0,function(){rLines.push((rLines.length+1)+" "+zn[x]+kn[y]+pn+"打");rTurn=1-rTurn;isA=false;uRSt();renderBoard();});}
-else{var pObj=bS[from];pn=pObj.t;fc=from.replace(",","");delete bS[from];var cP=false;if(!unp[pn]&&pn!=="金"&&pn!=="玉"&&pn!=="王"){var fy=parseInt(from.split(",")[1],10);if((!isG&&(y<=3||fy<=3))||(isG&&(y>=7||fy>=7)))cP=true;}var dP=cP&&confirm("成りますか？");var fn=pn;if(dP){fn=(pn==="歩"?"と":pn==="角"?"馬":pn==="飛"?"竜":"成"+pn);}anim(from,k,fn,isG?1:0,function(){if(bS[k]){var c=unp[bS[k].t]||bS[k].t;if(isG)gHnd[c]=(gHnd[c]||0)+1;else sHnd[c]=(sHnd[c]||0)+1;}bS[k]={t:fn,g:isG?1:0};rLines.push((rLines.length+1)+" "+zn[x]+kn[y]+pn+(dP?"成":"")+"("+fc+")");rTurn=1-rTurn;isA=false;uRSt();renderBoard();});}
+  var isG=rTurn===1;if(!sF){if(bS[k]&&bS[k].g===(isG?1:0)){sF=k;renderBoard();}return;}
+  if(sF===k){sF=null;renderBoard();return;}
+  if(sF.indexOf("h_")!==0&&bS[k]&&bS[k].g===(isG?1:0)){sF=k;renderBoard();return;}
+  var from=sF;sF=null;var isD=from.indexOf("h_")===0,pn="",fc="";svH();isA=true;
+  if(isD){
+    pn=from.replace(isG?"h_g_":"h_","");if(isG)gHnd[pn]--;else sHnd[pn]--;
+    bS[k]={t:pn,g:isG?1:0};
+    anim(from,k,pn,isG?1:0,function(){rLines.push((rLines.length+1)+" "+zn[x]+kn[y]+pn+"打");rTurn=1-rTurn;isA=false;uRSt();renderBoard();});
+  }else{
+    var pObj=bS[from];pn=pObj.t;fc=from.replace(",","");delete bS[from];
+    var cP=false;
+    if(!unp[pn]&&pn!=="金"&&pn!=="玉"&&pn!=="王"){
+      var fy=parseInt(from.split(",")[1],10);
+      if((!isG&&(y<=3||fy<=3))||(isG&&(y>=7||fy>=7)))cP=true;
+    }
+    var dP=cP&&confirm("成りますか？");var fn=pn;
+    if(dP){fn=(pn==="歩"?"と":pn==="角"?"馬":pn==="飛"?"竜":"成"+pn);}
+    anim(from,k,fn,isG?1:0,function(){
+      if(bS[k]){var c=unp[bS[k].t]||bS[k].t;if(isG)gHnd[c]=(gHnd[c]||0)+1;else sHnd[c]=(sHnd[c]||0)+1;}
+      bS[k]={t:fn,g:isG?1:0};
+      rLines.push((rLines.length+1)+" "+zn[x]+kn[y]+pn+(dP?"成":"")+"("+fc+")");
+      rTurn=1-rTurn;isA=false;uRSt();renderBoard();
+    });
+  }
 }
 function fRec(){if(!rLines.length){alert("手がありません");return;}var t=prompt("定跡名を入力:","新定跡_"+(new Date().getMonth()+1)+"月"+new Date().getDate()+"日");if(!t)return;regK(t,rLines.join("\n"));eRec();}
 function sH(){if(!bk.length||st>=bk.length||isA)return;hFail=true;hI={from:bk[st].from,to:bk[st].to};document.getElementById("st").innerHTML='<span style="color:#0277bd;">💡 正解: 【'+bk[st].name+'】</span>';renderBoard();}
@@ -212,7 +312,6 @@ window.addEventListener("drop",function(e){
   var rdr=new FileReader();rdr.onload=function(ev){regK(f.name.replace(/\.[^/.]+$/,""),ev.target.result);};rdr.readAsText(f,"Shift_JIS");
 });
 
-// 起動時処理：エルモの自動追加を廃止し、端末に保存されたデータのみを読み込み
 initB();
 try{var d=localStorage.getItem("skifs_min");if(d)skifs=JSON.parse(d);}catch(e){skifs={};}
 if(skifs && skifs["エルモ囲い（基本形）"]){
