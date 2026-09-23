@@ -23,6 +23,8 @@ td.sel,.hp.sel .piece{background:#d4e157!important;}td.h-from{background:#81d4fa
 .mbox input{padding:5px;}.mbox textarea{height:100px;font-size:12px;padding:4px;}.btn-b{padding:7px 10px;font-size:12px;border-radius:4px;border:none;font-weight:bold;cursor:pointer;color:#fff;}
 #rbar{display:none;background:#ffebee;border:1px solid #ef5350;border-radius:4px;padding:4px;margin:2px auto;max-width:390px;}
 #d-ovl{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(46,125,50,0.85);z-index:2000;color:#fff;font-size:18px;font-weight:bold;align-items:center;justify-content:center;border:4px dashed #fff;pointer-events:none;}
+.branch-btn{display:block;width:100%;text-align:left;background:#f5f5f5;border:1.5px solid #1976d2;padding:8px;border-radius:4px;margin:5px 0;font-weight:bold;cursor:pointer;font-size:13px;color:#111;}
+.branch-btn:hover{background:#e3f2fd;}
 </style>
 </head>
 <body>
@@ -41,6 +43,10 @@ td.sel,.hp.sel .piece{background:#d4e157!important;}td.h-from{background:#81d4fa
 </div>
 <div id="modal" class="modal"><div class="mbox"><b>タイトル</b><input id="kt" placeholder="相掛かり"><b>KIFテキスト</b><textarea id="kx"></textarea><div style="text-align:right;"><button class="btn" style="background:#888;" onclick="cM('modal')">閉じる</button> <button class="btn" onclick="sApp()">保存</button></div></div></div>
 <div id="smodal" class="modal"><div class="mbox"><b>同期データ</b><textarea id="sx"></textarea><div style="display:flex;justify-content:space-between;margin-top:4px;"><button class="btn" style="background:#888;" onclick="cM('smodal')">閉じる</button><div><button class="btn" style="background:#0288d1;" onclick="cSync()">コピー</button> <button class="btn" onclick="aSync()">反映</button></div></div></div></div>
+
+<!-- 分岐選択モーダル -->
+<div id="bmodal" class="modal"><div class="mbox"><b id="bm-title">分岐を選択してください</b><div id="bm-list" style="margin:8px 0;max-height:220px;overflow-y:auto;"></div><div style="text-align:right;"><button class="btn" style="background:#888;" onclick="cM('bmodal')">閉じる</button></div></div></div>
+
 <div id="sb"></div><div id="st">棋譜を登録または選択してください</div>
 <div class="hand" id="gh"></div>
 <div id="bbox"><table id="tbl"><tbody id="tb"></tbody></table></div>
@@ -48,11 +54,12 @@ td.sel,.hp.sel .piece{background:#d4e157!important;}td.h-from{background:#81d4fa
 <div id="pbtns" style="margin-top:6px;display:flex;justify-content:center;gap:4px;flex-wrap:wrap;">
 <button class="btn-b" style="background:#e65100;" onclick="uM()">↩️ 待った</button>
 <button class="btn-b" style="background:#0288d1;" onclick="sH()">💡 正解</button>
-<button class="btn-b" style="background:#6a1b9a;" onclick="jumpToPly()">⏩ 手数指定</button>
+<button class="btn-b" style="background:#e91e63;" onclick="showBranchModalManual()">🔀 分岐</button>
+<button class="btn-b" style="background:#6a1b9a;" onclick="jumpToPly()">⏩ 手数</button>
 <button class="btn-b" style="background:#78909c;" onclick="rG()">やり直す</button>
 </div>
 <script>
-var skifs={},bk=[],rawMoves=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[];
+var skifs={},parsedTree=[],currentActiveSeq=[],bk=[],rawMoves=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[];
 var cm={'１':1,'２':2,'３':3,'４':4,'５':5,'６':6,'７':7,'８':8,'９':9,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
 var zn=["","１","２","３","４","５","６","７","８","９"],kn=["","一","二","三","四","五","六","七","八","九"];
 var unp={"と":"歩","成香":"香","成桂":"桂","成銀":"銀","馬":"角","竜":"飛","龍":"飛"};
@@ -61,7 +68,7 @@ var cCnt=0,hFail=false,isR=false,rTurn=0,rLines=[];
 function oM(id){document.getElementById(id).style.display="flex";}
 function cM(id){document.getElementById(id).style.display="none";}
 function sApp(){var t=(document.getElementById("kt").value.trim())||("棋譜_"+new Date().toLocaleDateString()),tx=document.getElementById("kx").value;if(tx.trim()){regK(t,tx);cM("modal");}}
-function regK(t,tx){var b=pK(tx);if(!b.length){alert("認識失敗");return;}skifs[t]=tx;try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}uD(t);lB(tx);}
+function regK(t,tx){var tr=parseFullKif(tx);if(!tr.length){alert("認識失敗");return;}skifs[t]=tx;try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}uD(t);lB(tx);}
 function uD(k){
   var s=document.getElementById("sel");s.innerHTML="";
   var ks=Object.keys(skifs);
@@ -75,7 +82,7 @@ function uD(k){
     s.appendChild(o);
   }
 }
-function swKif(){if(isR)eRec();var k=document.getElementById("sel").value;if(k&&skifs[k])lB(skifs[k]);else{bk=[];rawMoves=[];rG();}}
+function swKif(){if(isR)eRec();var k=document.getElementById("sel").value;if(k&&skifs[k])lB(skifs[k]);else{parsedTree=[];bk=[];rawMoves=[];rG();}}
 function delKif(){
   var s=document.getElementById("sel");
   if(!s.value||!confirm("「"+s.value+"」を削除しますか？"))return;
@@ -84,55 +91,109 @@ function delKif(){
   var rk=Object.keys(skifs);
   uD(rk.length?rk[0]:"");
   if(rk.length)lB(skifs[rk[0]]);
-  else{bk=[];rawMoves=[];rG();}
+  else{parsedTree=[];bk=[];rawMoves=[];rG();}
 }
 
-// 駒打ち、同○、成りを確実にパースするロジック
-function pK(tx){
-  var ls=tx.split(/\r?\n/),px=0,py=0;
-  rawMoves=[];
+// 棋譜行パーサー
+function parseLineMove(l, px, py){
+  var m=l.match(/^\s*(\d+)\s+([^\s\(]+(?:\s*[^\s\(]+)*)(?:\s*\(([1-9]{2})\))?/);
+  if(!m)return null;
+  var ply=parseInt(m[1],10);
+  var moveCore=m[2].replace(/[\s\u3000]+/g,'');
+  var fromCoord=m[3];
+  var tx0=0,ty0=0,from=null;
+
+  if(moveCore.indexOf("同")===0){
+    tx0=px;ty0=py;
+  }else{
+    tx0=cm[moveCore[0]];ty0=cm[moveCore[1]];
+  }
+
+  if(moveCore.indexOf("打")!==-1){
+    var mPiece=moveCore.match(/([歩香桂銀金角飛])打/);
+    if(mPiece) from="h_"+mPiece[1];
+  }else if(fromCoord){
+    from=fromCoord[0]+","+fromCoord[1];
+  }
+
+  if(tx0&&ty0&&from){
+    return {ply:ply, from:from, to:tx0+","+ty0, name:moveCore.replace(/\([^\)]*\)/g,''), tx:tx0, ty:ty0};
+  }
+  return null;
+}
+
+// 本譜と「変化：○手」をツリー構造として全抽出
+function parseFullKif(tx){
+  var ls=tx.split(/\r?\n/);
+  var blocks=[], currentBlock={startPly:1, lines:[], name:"本譜"};
   for(var i=0;i<ls.length;i++){
     var l=ls[i].trim();
     if(!l)continue;
-    if(l.indexOf("変化")===0)break;
-
-    var m=l.match(/^\s*(\d+)\s+([^\s\(]+(?:\s*[^\s\(]+)*)(?:\s*\(([1-9]{2})\))?/);
-    if(!m)continue;
-    var ply=parseInt(m[1],10);
-    var moveCore=m[2].replace(/[\s\u3000]+/g,'');
-    var fromCoord=m[3];
-
-    var tx0=0,ty0=0,from=null;
-
-    if(moveCore.indexOf("同")===0){
-      tx0=px;
-      ty0=py;
-    }else{
-      tx0=cm[moveCore[0]];
-      ty0=cm[moveCore[1]];
+    var bMatch=l.match(/^変化：(\d+)手/);
+    if(bMatch){
+      if(currentBlock.lines.length) blocks.push(currentBlock);
+      currentBlock={startPly:parseInt(bMatch[1],10), lines:[], name:"変化："+bMatch[1]+"手"};
+      continue;
     }
-
-    if(moveCore.indexOf("打")!==-1){
-      // 駒名のみをピンポイントで抽出（例：６六角打 -> 角）
-      var mPiece=moveCore.match(/([歩香桂銀金角飛])打/);
-      if(mPiece){
-        from="h_"+mPiece[1];
-      }
-    }else if(fromCoord){
-      from=fromCoord[0]+","+fromCoord[1];
-    }
-
-    if(tx0&&ty0&&from){
-      px=tx0;py=ty0;
-      rawMoves.push({ply:ply,from:from,to:tx0+","+ty0,name:moveCore.replace(/\([^\)]*\)/g,'')});
+    if(/^\s*\d+\s+/.test(l)){
+      currentBlock.lines.push(l);
     }
   }
-  var res=[];
+  if(currentBlock.lines.length) blocks.push(currentBlock);
+  if(!blocks.length) return [];
+
+  // 各ブロックの手順を抽出
+  for(var b=0;b<blocks.length;b++){
+    var blk=blocks[b];
+    blk.moves=[];
+    var px=0,py=0;
+    // 分岐なら直前手の座標を引き継ぐ
+    if(blk.startPly>1 && blocks[0].moves){
+      for(var k=0;k<blocks[0].moves.length;k++){
+        if(blocks[0].moves[k].ply === blk.startPly-1){
+          px=blocks[0].moves[k].tx; py=blocks[0].moves[k].ty; break;
+        }
+      }
+    }
+    for(var j=0;j<blk.lines.length;j++){
+      var pm=parseLineMove(blk.lines[j], px, py);
+      if(pm){
+        px=pm.tx; py=pm.ty;
+        blk.moves.push(pm);
+      }
+    }
+  }
+  return blocks;
+}
+
+// 指定ブロックから有効手順を生成
+function buildSequenceFromBlock(blockIndex){
+  if(!parsedTree.length) return;
+  var target=parsedTree[blockIndex];
+  var seq=[];
+  if(target.startPly===1){
+    seq=target.moves.slice();
+  }else{
+    // 本譜の途中まで複製して変化ブロックを結合
+    var mainMoves=parsedTree[0].moves;
+    for(var i=0;i<mainMoves.length;i++){
+      if(mainMoves[i].ply < target.startPly){
+        seq.push(mainMoves[i]);
+      }else break;
+    }
+    seq=seq.concat(target.moves);
+  }
+  applyMoveSequence(seq);
+}
+
+function applyMoveSequence(seq){
+  rawMoves=seq;
+  bk=[];
   for(var j=0;j<rawMoves.length;j++){
     var it=rawMoves[j];
     if(it.ply%2===1){
       var nx=rawMoves[j+1],has=nx&&(nx.ply===it.ply+1);
-      res.push({
+      bk.push({
         ply:it.ply,
         from:it.from,
         to:it.to,
@@ -144,10 +205,85 @@ function pK(tx){
       if(has)j++;
     }
   }
-  return res;
 }
 
-function lB(tx){bk=pK(tx);rG();}
+function lB(tx){
+  parsedTree=parseFullKif(tx);
+  if(!parsedTree.length){bk=[];rawMoves=[];rG();return;}
+  buildSequenceFromBlock(0);
+  rG();
+}
+
+// 分岐候補の検出
+function getBranchesAt(ply){
+  var branches=[];
+  for(var i=0;i<parsedTree.length;i++){
+    if(i===0){
+      for(var m=0;m<parsedTree[0].moves.length;m++){
+        if(parsedTree[0].moves[m].ply===ply){
+          branches.push({index:0, name:"本譜", moveName:parsedTree[0].moves[m].name});
+          break;
+        }
+      }
+    }else{
+      if(parsedTree[i].startPly===ply && parsedTree[i].moves.length){
+        branches.push({index:i, name:parsedTree[i].name, moveName:parsedTree[i].moves[0].name});
+      }
+    }
+  }
+  return branches.length>1 ? branches : [];
+}
+
+function showBranchModal(branches, currentPly){
+  var list=document.getElementById("bm-list");
+  list.innerHTML="";
+  document.getElementById("bm-title").innerText=currentPly+"手目の分岐ルート選択";
+  for(var i=0;i<branches.length;i++){
+    (function(b){
+      var btn=document.createElement("button");
+      btn.className="branch-btn";
+      btn.innerHTML=(b.index===0?"⭐ ":"🔀 ")+b.name+" : <b>"+b.moveName+"</b>";
+      btn.onclick=function(){
+        cM('bmodal');
+        buildSequenceFromBlock(b.index);
+        jumpToExactPly(currentPly-1);
+      };
+      list.appendChild(btn);
+    })(branches[i]);
+  }
+  oM('bmodal');
+}
+
+function showBranchModalManual(){
+  if(!parsedTree.length){alert("棋譜がありません");return;}
+  var currentPly=(st*2)+1;
+  var bAt=getBranchesAt(currentPly);
+  if(bAt.length){
+    showBranchModal(bAt, currentPly);
+    return;
+  }
+  // 全分岐一覧を表示
+  var list=document.getElementById("bm-list");
+  list.innerHTML="";
+  document.getElementById("bm-title").innerText="切り替える分岐を選択";
+  for(var i=0;i<parsedTree.length;i++){
+    (function(idx){
+      var b=parsedTree[idx];
+      var btn=document.createElement("button");
+      btn.className="branch-btn";
+      var mName=b.moves.length?b.moves[0].name:"";
+      btn.innerHTML=(idx===0?"⭐ 本譜":"🔀 "+b.name)+" (初手: "+mName+")";
+      btn.onclick=function(){
+        cM('bmodal');
+        buildSequenceFromBlock(idx);
+        jumpToExactPly(b.startPly>1?(b.startPly-1):0);
+      };
+      list.appendChild(btn);
+    })(i);
+  }
+  oM('bmodal');
+}
+
 function initB(){
   bS={};sHnd={};gHnd={};hst=[];
   for(var x=1;x<=9;x++){bS[x+",7"]={t:"歩",g:0};bS[x+",3"]={t:"歩",g:1};}
@@ -167,19 +303,10 @@ function uScr(){
 function svH(){hst.push({b:JSON.parse(JSON.stringify(bS)),sh:JSON.parse(JSON.stringify(sHnd)),gh:JSON.parse(JSON.stringify(gHnd)),st:st,tx:document.getElementById("st").innerHTML,rt:rTurn,rl:rLines.slice(),cc:cCnt,hf:hFail});}
 function uM(){if(isA||!hst.length)return;var p=hst.pop();bS=p.b;sHnd=p.sh;gHnd=p.gh;st=p.st;sF=null;hI=null;cCnt=p.cc;hFail=p.hf;if(isR){rTurn=p.rt;rLines=p.rl;uRSt();}else{document.getElementById("st").innerHTML=p.tx;uScr();}renderBoard();}
 
-function jumpToPly(){
-  if(!rawMoves.length){alert("棋譜が読み込まれていません");return;}
-  var maxPly=rawMoves.length;
-  var input=prompt("何手目まで進めて練習しますか？ (0〜"+maxPly+"手目):", (st*2).toString());
-  if(input===null)return;
-  var target=parseInt(input,10);
-  if(isNaN(target)||target<0||target>maxPly){alert("0から"+maxPly+"の数値を入力してください");return;}
-
-  var playCount=target;
-  if(playCount%2!==0) playCount--;
-
+function jumpToExactPly(playCount){
   initB();
   for(var i=0;i<playCount;i++){
+    if(i>=rawMoves.length)break;
     var m=rawMoves[i];
     var isG=(i%2===1);
     var isD=(m.from.indexOf("h_")===0);
@@ -204,12 +331,24 @@ function jumpToPly(){
     bS[m.to]={t:ptName,g:isG?1:0};
   }
 
-  st=playCount/2;
+  st=Math.floor(playCount/2);
   sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;
   var el=document.getElementById("st");
-  if(st<bk.length) el.innerHTML='<span style="color:#2e7d32;">▶ '+playCount+'手目局面から再開（▲'+bk[st].name+'）</span>';
-  else el.innerText="定跡の最終手まで進みました";
+  if(st<bk.length) el.innerHTML='<span style="color:#2e7d32;">▶ '+(st*2)+'手目から再開（▲'+bk[st].name+'）</span>';
+  else el.innerText="最終手まで進みました";
   uScr();renderBoard();
+}
+
+function jumpToPly(){
+  if(!rawMoves.length){alert("棋譜が読み込まれていません");return;}
+  var maxPly=rawMoves.length;
+  var input=prompt("何手目まで進めて練習しますか？ (0〜"+maxPly+"手目):", (st*2).toString());
+  if(input===null)return;
+  var target=parseInt(input,10);
+  if(isNaN(target)||target<0||target>maxPly){alert("0から"+maxPly+"の数値を入力してください");return;}
+  var playCount=target;
+  if(playCount%2!==0) playCount--;
+  jumpToExactPly(playCount);
 }
 
 function renderBoard(wK){
@@ -276,13 +415,9 @@ function onC(x,y){
   var isDrop=(from.indexOf("h_")===0);
   var pt=isDrop?from.replace("h_",""):bS[from].t;
 
-  // 正解判定（駒打ち・盤上移動ともに厳密に比較）
   var isMatch=false;
-  if(isDrop){
-    isMatch=(exp.from==="h_"+pt && exp.to===to);
-  }else{
-    isMatch=(exp.from===from && exp.to===to);
-  }
+  if(isDrop) isMatch=(exp.from==="h_"+pt && exp.to===to);
+  else isMatch=(exp.from===from && exp.to===to);
 
   if(isMatch){
     svH();isA=true;if(!hFail)cCnt++;
@@ -296,10 +431,9 @@ function onC(x,y){
         var cap=unp[bS[to].t]||bS[to].t;
         sHnd[cap]=(sHnd[cap]||0)+1;
       }
-      if(isDrop){
-        sHnd[pt]--;
-      }
+      if(isDrop) sHnd[pt]--;
       bS[to]={t:pt,g:0};st++;hFail=false;uScr();renderBoard();
+
       if(exp.rFrom&&exp.rTo){
         el.innerHTML='<span style="color:#1b5e20;">◯ 正解 ('+exp.name+')</span>';
         setTimeout(function(){
@@ -315,10 +449,18 @@ function onC(x,y){
               var rCap=unp[bS[exp.rTo].t]||bS[exp.rTo].t;
               gHnd[rCap]=(gHnd[rCap]||0)+1;
             }
-            if(isRDrop){
-              gHnd[rpt]--;
+            if(isRDrop) gHnd[rpt]--;
+            bS[exp.rTo]={t:rpt,g:1};
+            el.innerHTML+=" 相手: "+exp.rName;
+            isA=false;
+            renderBoard();
+
+            // 相手の手の直後に次手（先手番）の分岐が存在するかチェック
+            var nextPly=(st*2)+1;
+            var branches=getBranchesAt(nextPly);
+            if(branches.length){
+              setTimeout(function(){showBranchModal(branches, nextPly);},350);
             }
-            bS[exp.rTo]={t:rpt,g:1};el.innerHTML+=" 相手: "+exp.rName;isA=false;renderBoard();
           });
         },220);
       }else{
@@ -376,7 +518,7 @@ function rG(){
 }
 function oSync(){document.getElementById("sx").value=localStorage.getItem("skifs_min")||JSON.stringify(skifs);oM("smodal");}
 function cSync(){document.getElementById("sx").select();document.execCommand("copy");alert("コピー完了");}
-function aSync(){try{skifs=JSON.parse(document.getElementById("sx").value.trim());localStorage.setItem("skifs_min",JSON.stringify(skifs));var rk=Object.keys(skifs);uD(rk.length?rk[0]:"");if(rk.length)lB(skifs[rk[0]]);else{bk=[];rawMoves=[];rG();}cM("smodal");alert("同期完了");}catch(e){alert("形式不正");}}
+function aSync(){try{skifs=JSON.parse(document.getElementById("sx").value.trim());localStorage.setItem("skifs_min",JSON.stringify(skifs));var rk=Object.keys(skifs);uD(rk.length?rk[0]:"");if(rk.length)lB(skifs[rk[0]]);else{parsedTree=[];bk=[];rawMoves=[];rG();}cM("smodal");alert("同期完了");}catch(e){alert("形式不正");}}
 
 window.addEventListener("dragover",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="flex";});
 window.addEventListener("dragleave",function(e){if(e.clientX<=0||e.clientY<=0){var d=document.getElementById("d-ovl");if(d)d.style.display="none";}});
