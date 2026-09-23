@@ -66,40 +66,41 @@ function uD(k){var s=document.getElementById("sel");s.innerHTML="";var ks=Object
 function swKif(){if(isR)eRec();var k=document.getElementById("sel").value;if(k&&skifs[k])lB(skifs[k]);}
 function delKif(){var s=document.getElementById("sel");if(!s.value||!confirm("削除しますか？"))return;delete skifs[s.value];try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}uD();var rk=Object.keys(skifs);if(rk.length)lB(skifs[rk[0]]);else{bk=[];rG();}}
 
-// 「同 桂」等の全角スペースと「変化」行を正しく判定するパーサー
+// 「同」「成」「打」すべてを完璧に分解する安定パーサー
 function pK(tx){
   var ls=tx.split(/\r?\n/),raw=[],px=0,py=0;
   for(var i=0;i<ls.length;i++){
     var l=ls[i].trim();
     if(!l)continue;
-    if(l.indexOf("変化")===0)break; // 本譜手順のみ取得
-    var mRes=l.match(/^\s*(\d+)\s+([^\s\(]+(?:\s*\([^\)]+\))?)/);
-    if(!mRes)continue;
-    var ply=parseInt(mRes[1],10);
-    var fullMove=mRes[2].replace(/\s+/g,''); // 指し手内部の全角・半角スペースを除去
-    var from=null,tx0=0,ty0=0;
+    if(l.indexOf("変化")===0)break; // 本譜のみ
 
-    if(fullMove.indexOf("同")===0){
-      tx0=px;ty0=py;
+    // 手数と指し手本体を抽出（全角スペース混じりも完全に正規化）
+    var m=l.match(/^\s*(\d+)\s+([^\s\(]+(?:\s*[^\s\(]+)*)(?:\s*\(([1-9]{2})\))?/);
+    if(!m)continue;
+    var ply=parseInt(m[1],10);
+    var moveCore=m[2].replace(/[\s\u3000]+/g,''); // 空白を徹底除去
+    var fromCoord=m[3]; // "(21)" のような元座標
+
+    var tx0=0,ty0=0,from=null;
+
+    if(moveCore.indexOf("同")===0){
+      tx0=px;
+      ty0=py;
     }else{
-      tx0=cm[fullMove[0]];
-      ty0=cm[fullMove[1]];
+      tx0=cm[moveCore[0]];
+      ty0=cm[moveCore[1]];
     }
 
-    if(fullMove.indexOf('打')!==-1){
-      var ptName=fullMove.replace(/^同/,'').slice(fullMove.indexOf("同")===0?0:2).replace('打','').trim();
-      from="h_"+ptName;
-    }else{
-      var op=fullMove.indexOf('('),cl=fullMove.indexOf(')');
-      if(op!==-1&&cl!==-1){
-        var c=fullMove.substring(op+1,cl);
-        from=c[0]+","+c[1];
-      }
+    if(moveCore.indexOf("打")!==-1){
+      var pt=moveCore.replace(/^同/,'').replace(/[１-９一-九]/g,'').replace('打','').trim();
+      from="h_"+pt;
+    }else if(fromCoord){
+      from=fromCoord[0]+","+fromCoord[1];
     }
 
     if(tx0&&ty0&&from){
       px=tx0;py=ty0;
-      raw.push({ply:ply,from:from,to:tx0+","+ty0,name:fullMove.split('(')[0].trim()});
+      raw.push({ply:ply,from:from,to:tx0+","+ty0,name:moveCore.replace(/\([^\)]*\)/g,'')});
     }
   }
   var res=[];
