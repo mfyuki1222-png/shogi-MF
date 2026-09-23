@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.9.1</title>
+<title>定跡チェッカー ver.1.9</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -163,7 +163,7 @@ function parseLineMove(l, px, py){
   var mCoord = rest.match(/\(([1-9]{2})\)/);
   if(mCoord) fromCoord = mCoord[1];
 
-  var moveCore = rest.replace(/\([^\)]*\)/g, '').replace(/[\u00A0\u3000\s]+/g, '');
+  var moveCore = rest.replace(/\([^\)]*\)/g, '').replace(/[\u00A0\u3000\s]+/g, '').replace(/[▲△☗☖]/g, '');
   var tx0 = 0, ty0 = 0, from = null;
 
   if(moveCore.indexOf("同") === 0){
@@ -511,7 +511,7 @@ function onC(x, y){
   if(!bk.length){el.innerText = "棋譜を登録または選択してください"; return;}
   if(!sF){if(bS[k] && !bS[k].g){closeBSheet(); sF = k; renderBoard();} return;}
   if(sF === k){sF = null; renderBoard(); return;}
-  if(sF.indexOf("h_") !== 0 && bS[k] && !bS[k].g){closeBSheet(); sF = k; renderBoard(); return;}
+  if(bS[k] && !bS[k].g){closeBSheet(); sF = k; renderBoard(); return;}
 
   var from = sF, to = k; sF = null; if(st >= bk.length) return;
   var exp = bk[st];
@@ -617,7 +617,7 @@ function uRSt(){document.getElementById("st").innerHTML = '<span style="color:#d
 function hRec(x, y, k){
   var isG = rTurn === 1; if(!sF){if(bS[k] && bS[k].g === (isG ? 1 : 0)){sF = k; renderBoard();} return;}
   if(sF === k){sF = null; renderBoard(); return;}
-  if(sF.indexOf("h_") !== 0 && bS[k] && bS[k].g === (isG ? 1 : 0)){sF = k; renderBoard(); return;}
+  if(bS[k] && bS[k].g === (isG ? 1 : 0)){sF = k; renderBoard(); return;}
   var from = sF; sF = null; var isD = from.indexOf("h_") === 0, pn = "", fc = ""; svH(); isA = true;
   if(isD){
     pn = from.replace(isG ? "h_g_" : "h_", ""); if(isG) gHnd[pn]--; else sHnd[pn]--;
