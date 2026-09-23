@@ -41,7 +41,7 @@ td.sel,.hp.sel .piece{background:#d4e157!important;}td.h-from{background:#81d4fa
 </div>
 <div id="modal" class="modal"><div class="mbox"><b>タイトル</b><input id="kt" placeholder="相掛かり"><b>KIFテキスト</b><textarea id="kx"></textarea><div style="text-align:right;"><button class="btn" style="background:#888;" onclick="cM('modal')">閉じる</button> <button class="btn" onclick="sApp()">保存</button></div></div></div>
 <div id="smodal" class="modal"><div class="mbox"><b>同期データ</b><textarea id="sx"></textarea><div style="display:flex;justify-content:space-between;margin-top:4px;"><button class="btn" style="background:#888;" onclick="cM('smodal')">閉じる</button><div><button class="btn" style="background:#0288d1;" onclick="cSync()">コピー</button> <button class="btn" onclick="aSync()">反映</button></div></div></div></div>
-<div id="sb"></div><div id="st">初手を指してください</div>
+<div id="sb"></div><div id="st">棋譜を登録または選択してください</div>
 <div class="hand" id="gh"></div>
 <div id="bbox"><table id="tbl"><tbody id="tb"></tbody></table></div>
 <div class="hand" id="sh"></div>
@@ -51,7 +51,6 @@ td.sel,.hp.sel .piece{background:#d4e157!important;}td.h-from{background:#81d4fa
 <button class="btn-b" style="background:#78909c;" onclick="rG()">やり直す</button>
 </div>
 <script>
-var defK="1 ２六歩(27)\n2 ３四歩(33)\n3 ２五歩(26)\n4 ３三角(22)\n5 ４八銀(39)\n6 ４二飛(82)\n7 ６八金(69)\n8 ６二玉(51)\n9 ７八玉(59)\n10 ７二玉(62)\n11 ７九銀(79)";
 var skifs={},bk=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[];
 var cm={'１':1,'２':2,'３':3,'４':4,'５':5,'６':6,'７':7,'８':8,'９':9,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
 var zn=["","１","２","３","４","５","６","７","８","９"],kn=["","一","二","三","四","五","六","七","八","九"];
@@ -62,24 +61,43 @@ function oM(id){document.getElementById(id).style.display="flex";}
 function cM(id){document.getElementById(id).style.display="none";}
 function sApp(){var t=(document.getElementById("kt").value.trim())||("棋譜_"+new Date().toLocaleDateString()),tx=document.getElementById("kx").value;if(tx.trim()){regK(t,tx);cM("modal");}}
 function regK(t,tx){var b=pK(tx);if(!b.length){alert("認識失敗");return;}skifs[t]=tx;try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}uD(t);lB(tx);}
-function uD(k){var s=document.getElementById("sel");s.innerHTML="";var ks=Object.keys(skifs);for(var i=0;i<ks.length;i++){var o=document.createElement("option");o.value=ks[i];o.innerText=ks[i];if(ks[i]===k)o.selected=true;s.appendChild(o);}}
-function swKif(){if(isR)eRec();var k=document.getElementById("sel").value;if(k&&skifs[k])lB(skifs[k]);}
-function delKif(){var s=document.getElementById("sel");if(!s.value||!confirm("削除しますか？"))return;delete skifs[s.value];try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}uD();var rk=Object.keys(skifs);if(rk.length)lB(skifs[rk[0]]);else{bk=[];rG();}}
+function uD(k){
+  var s=document.getElementById("sel");s.innerHTML="";
+  var ks=Object.keys(skifs);
+  if(!ks.length){
+    var o=document.createElement("option");o.value="";o.innerText="-- 登録なし --";s.appendChild(o);
+    return;
+  }
+  for(var i=0;i<ks.length;i++){
+    var o=document.createElement("option");o.value=ks[i];o.innerText=ks[i];
+    if(ks[i]===k)o.selected=true;
+    s.appendChild(o);
+  }
+}
+function swKif(){if(isR)eRec();var k=document.getElementById("sel").value;if(k&&skifs[k])lB(skifs[k]);else{bk=[];rG();}}
+function delKif(){
+  var s=document.getElementById("sel");
+  if(!s.value||!confirm("「"+s.value+"」を削除しますか？"))return;
+  delete skifs[s.value];
+  try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}
+  var rk=Object.keys(skifs);
+  uD(rk.length?rk[0]:"");
+  if(rk.length)lB(skifs[rk[0]]);
+  else{bk=[];rG();}
+}
 
-// 「同」「成」「打」すべてを完璧に分解する安定パーサー
 function pK(tx){
   var ls=tx.split(/\r?\n/),raw=[],px=0,py=0;
   for(var i=0;i<ls.length;i++){
     var l=ls[i].trim();
     if(!l)continue;
-    if(l.indexOf("変化")===0)break; // 本譜のみ
+    if(l.indexOf("変化")===0)break;
 
-    // 手数と指し手本体を抽出（全角スペース混じりも完全に正規化）
     var m=l.match(/^\s*(\d+)\s+([^\s\(]+(?:\s*[^\s\(]+)*)(?:\s*\(([1-9]{2})\))?/);
     if(!m)continue;
     var ply=parseInt(m[1],10);
-    var moveCore=m[2].replace(/[\s\u3000]+/g,''); // 空白を徹底除去
-    var fromCoord=m[3]; // "(21)" のような元座標
+    var moveCore=m[2].replace(/[\s\u3000]+/g,'');
+    var fromCoord=m[3];
 
     var tx0=0,ty0=0,from=null;
 
@@ -142,6 +160,7 @@ setTimeout(function(){if(fl.parentNode)fl.parentNode.removeChild(fl);cb();},190)
 function onC(x,y){
 if(isA)return;var k=x+","+y;if(isR){hRec(x,y,k);return;}
 var el=document.getElementById("st");hI=null;
+if(!bk.length){el.innerText="棋譜を登録または選択してください";return;}
 if(!sF){if(bS[k]&&!bS[k].g){sF=k;renderBoard();}return;}
 if(sF===k){sF=null;renderBoard();return;}
 if(sF.indexOf("h_")!==0&&bS[k]&&!bS[k].g){sF=k;renderBoard();return;}
@@ -173,11 +192,17 @@ if(isD){pn=from.replace(isG?"h_g_":"h_","");if(isG)gHnd[pn]--;else sHnd[pn]--;bS
 else{var pObj=bS[from];pn=pObj.t;fc=from.replace(",","");delete bS[from];var cP=false;if(!unp[pn]&&pn!=="金"&&pn!=="玉"&&pn!=="王"){var fy=parseInt(from.split(",")[1],10);if((!isG&&(y<=3||fy<=3))||(isG&&(y>=7||fy>=7)))cP=true;}var dP=cP&&confirm("成りますか？");var fn=pn;if(dP){fn=(pn==="歩"?"と":pn==="角"?"馬":pn==="飛"?"竜":"成"+pn);}anim(from,k,fn,isG?1:0,function(){if(bS[k]){var c=unp[bS[k].t]||bS[k].t;if(isG)gHnd[c]=(gHnd[c]||0)+1;else sHnd[c]=(sHnd[c]||0)+1;}bS[k]={t:fn,g:isG?1:0};rLines.push((rLines.length+1)+" "+zn[x]+kn[y]+pn+(dP?"成":"")+"("+fc+")");rTurn=1-rTurn;isA=false;uRSt();renderBoard();});}
 }
 function fRec(){if(!rLines.length){alert("手がありません");return;}var t=prompt("定跡名を入力:","新定跡_"+(new Date().getMonth()+1)+"月"+new Date().getDate()+"日");if(!t)return;regK(t,rLines.join("\n"));eRec();}
-function sH(){if(st>=bk.length||isA)return;hFail=true;hI={from:bk[st].from,to:bk[st].to};document.getElementById("st").innerHTML='<span style="color:#0277bd;">💡 正解: 【'+bk[st].name+'】</span>';renderBoard();}
-function rG(){st=0;sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;document.getElementById("st").innerText=bk.length?("初手を指してください（"+bk[0].name+"）"):"棋譜を選択";initB();uScr();renderBoard();}
+function sH(){if(!bk.length||st>=bk.length||isA)return;hFail=true;hI={from:bk[st].from,to:bk[st].to};document.getElementById("st").innerHTML='<span style="color:#0277bd;">💡 正解: 【'+bk[st].name+'】</span>';renderBoard();}
+function rG(){
+  st=0;sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;
+  var el=document.getElementById("st");
+  if(bk.length) el.innerText="初手を指してください（"+bk[0].name+"）";
+  else el.innerText="棋譜を登録または選択してください";
+  initB();uScr();renderBoard();
+}
 function oSync(){document.getElementById("sx").value=localStorage.getItem("skifs_min")||JSON.stringify(skifs);oM("smodal");}
 function cSync(){document.getElementById("sx").select();document.execCommand("copy");alert("コピー完了");}
-function aSync(){try{skifs=JSON.parse(document.getElementById("sx").value.trim());localStorage.setItem("skifs_min",JSON.stringify(skifs));uD();var k=Object.keys(skifs);if(k.length)lB(skifs[k[0]]);cM("smodal");alert("同期完了");}catch(e){alert("形式不正");}}
+function aSync(){try{skifs=JSON.parse(document.getElementById("sx").value.trim());localStorage.setItem("skifs_min",JSON.stringify(skifs));var rk=Object.keys(skifs);uD(rk.length?rk[0]:"");if(rk.length)lB(skifs[rk[0]]);else{bk=[];rG();}cM("smodal");alert("同期完了");}catch(e){alert("形式不正");}}
 
 window.addEventListener("dragover",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="flex";});
 window.addEventListener("dragleave",function(e){if(e.clientX<=0||e.clientY<=0){var d=document.getElementById("d-ovl");if(d)d.style.display="none";}});
@@ -187,9 +212,17 @@ window.addEventListener("drop",function(e){
   var rdr=new FileReader();rdr.onload=function(ev){regK(f.name.replace(/\.[^/.]+$/,""),ev.target.result);};rdr.readAsText(f,"Shift_JIS");
 });
 
-initB();try{var d=localStorage.getItem("skifs_min");if(d)skifs=JSON.parse(d);}catch(e){skifs={};}
-if(!skifs||!Object.keys(skifs).length){skifs={"エルモ囲い（基本形）":defK};try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){} }
-uD("エルモ囲い（基本形）");bk=pK(skifs["エルモ囲い（基本形）"]);renderBoard();uScr();
+// 起動時処理：エルモの自動追加を廃止し、端末に保存されたデータのみを読み込み
+initB();
+try{var d=localStorage.getItem("skifs_min");if(d)skifs=JSON.parse(d);}catch(e){skifs={};}
+if(skifs && skifs["エルモ囲い（基本形）"]){
+  delete skifs["エルモ囲い（基本形）"];
+  try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}
+}
+var ks=Object.keys(skifs);
+uD(ks.length?ks[0]:"");
+if(ks.length)lB(skifs[ks[0]]);
+else{bk=[];rG();}
 </script>
 </body>
 </html>
