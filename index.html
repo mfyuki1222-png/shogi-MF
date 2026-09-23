@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.6</title>
+<title>定跡チェッカー ver.1.8</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -47,7 +47,7 @@ td.w-cell{background:#ffcdd2!important;}
 </head>
 <body>
 <div id="d-ovl">📂 棋譜ファイルをドロップして登録</div>
-<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.6</span></h2>
+<h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.8</span></h2>
 <div class="pbar"><select id="sel" onchange="swKif()"></select><button class="btn" style="background:#c62828;" onclick="delKif()">削除</button></div>
 <div style="margin:3px 0;display:flex;justify-content:center;gap:4px;">
 <button class="btn" style="background:#d81b60;" onclick="sRec()">🔴 作成</button>
@@ -204,12 +204,10 @@ function parseFullKif(tx){
   return blocks;
 }
 
-// 変化の親は常に「本譜（blockIndex: 0）」として構築
 function getFullSequenceForBlock(blockIndex){
   var target = parsedTree[blockIndex];
   if(!target) return [];
 
-  // 本譜ブロック
   if(target.startPly === 1 || blockIndex === 0){
     var seq0 = [], px0 = 0, py0 = 0;
     for(var j = 0; j < target.lines.length; j++){
@@ -219,7 +217,6 @@ function getFullSequenceForBlock(blockIndex){
     return seq0;
   }
 
-  // 変化ブロックの親は常に本譜
   var mainTarget = parsedTree[0];
   var mainSeq = [];
   var mPx = 0, mPy = 0;
@@ -228,13 +225,11 @@ function getFullSequenceForBlock(blockIndex){
     if(mPm){ mPx = mPm.tx; mPy = mPm.ty; mainSeq.push(mPm); }
   }
 
-  // 変化開始直前（target.startPly - 1 手目）までの本譜を継承
   var parentSeq = mainSeq.slice(0, target.startPly - 1);
   var px = parentSeq.length ? parentSeq[parentSeq.length - 1].tx : 0;
   var py = parentSeq.length ? parentSeq[parentSeq.length - 1].ty : 0;
   var fullSeq = parentSeq.slice();
 
-  // 変化手順を結合
   for(var k = 0; k < target.lines.length; k++){
     var pm2 = parseLineMove(target.lines[k], px, py);
     if(pm2){ px = pm2.tx; py = pm2.ty; fullSeq.push(pm2); }
@@ -269,12 +264,10 @@ function lB(tx, kName){
   rG();
 }
 
-// 局面の着手履歴突合による真の分岐判定
 function getBranchesAt(ply){
   var branches = [];
   if(!rawMoves || rawMoves.length < ply) return [];
 
-  // 現在の手
   var curMove = rawMoves[ply - 1];
   branches.push({
     index: currentBlockIndex,
@@ -283,7 +276,6 @@ function getBranchesAt(ply){
     moveKey: curMove.from + "->" + curMove.to
   });
 
-  // 各変化ブロックと突合
   for(var i = 0; i < parsedTree.length; i++){
     if(i === currentBlockIndex) continue;
     var b = parsedTree[i];
@@ -291,7 +283,6 @@ function getBranchesAt(ply){
     if(b.startPly === ply){
       var bSeq = getFullSequenceForBlock(i);
       if(bSeq.length >= ply){
-        // 1手目から ply - 1 手目までの着手履歴が現在の手順と完全一致するか検証
         var isIdenticalHistory = true;
         for(var step = 0; step < ply - 1; step++){
           if(bSeq[step].from !== rawMoves[step].from || bSeq[step].to !== rawMoves[step].to){
@@ -315,7 +306,6 @@ function getBranchesAt(ply){
 
   if(branches.length <= 1) return [];
 
-  // 指し手が同一（同等手）の場合は除外
   var firstKey = branches[0].moveKey;
   var allSame = true;
   for(var k = 1; k < branches.length; k++){
@@ -339,7 +329,8 @@ function showBranchSheet(branches, currentPly){
       btn.onclick = function(){
         closeBSheet();
         buildSequenceFromBlock(b.index);
-        jumpToExactPly(currentPly - 1);
+        var targetPly = (currentPly % 2 === 1) ? (currentPly - 1) : currentPly;
+        jumpToExactPly(targetPly);
       };
       list.appendChild(btn);
     })(branches[i]);
@@ -347,7 +338,6 @@ function showBranchSheet(branches, currentPly){
   document.getElementById("bsheet").style.display = "block";
 }
 
-// 🔀 分岐ボタン：現在局面に真の分岐がある場合のみ開く
 function showBranchModalManual(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var currentPly = (st * 2) + 1;
@@ -362,7 +352,6 @@ function showBranchModalManual(){
   }
 }
 
-// 🌲 全分岐ボタン：全変化ブロックから選んでジャンプ
 function showAllBranchesModal(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var list = document.getElementById("bs-list");
@@ -378,7 +367,9 @@ function showAllBranchesModal(){
       btn.onclick = function(){
         closeBSheet();
         buildSequenceFromBlock(idx);
-        jumpToExactPly(b.startPly > 1 ? (b.startPly - 1) : 0);
+        var targetPly = b.startPly > 1 ? (b.startPly - 1) : 0;
+        if(targetPly % 2 !== 0) targetPly++;
+        jumpToExactPly(targetPly);
       };
       list.appendChild(btn);
     })(i);
@@ -442,8 +433,8 @@ function jumpToExactPly(playCount){
   else el.innerText = "最終手まで進みました";
   uScr(); renderBoard();
 
-  // ジャンプ先（偶数手完了直後）に次手（先手）の分岐があるか判定
-  var nextPly = (st * 2) + 1;
+  // ジャンプ完了直後に、次手の分岐があるか判定
+  var nextPly = playCount + 1;
   var branches = getBranchesAt(nextPly);
   if(branches.length >= 2){
     showBranchSheet(branches, nextPly);
@@ -557,43 +548,53 @@ function onC(x, y){
       bS[to] = {t: pt, g: 0};
       st++; hFail = false; uScr(); renderBoard();
 
-      if(exp.rFrom && exp.rTo){
-        el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span>';
-        setTimeout(function(){
-          var isRDrop = (exp.rFrom.indexOf("h_") === 0);
-          var rpt = isRDrop ? exp.rFrom.replace("h_", "") : (bS[exp.rFrom] ? bS[exp.rFrom].t : "桂");
+      // 先手のアニメーション完了後、次の偶数手（後手番）の分岐チェック
+      var nextGotePly = (st - 1) * 2 + 2; 
+      var goteBranches = getBranchesAt(nextGotePly);
 
-          if(!isRDrop && exp.rName.indexOf("成") !== -1 && rpt.indexOf("成") === -1){
-            if(rpt === "角") rpt = "馬"; else if(rpt === "飛") rpt = "竜"; else if(rpt === "歩") rpt = "と";
-            else if(rpt === "銀") rpt = "成銀"; else if(rpt === "桂") rpt = "成桂"; else if(rpt === "香") rpt = "成香";
-          }
+      if(goteBranches.length >= 2){
+        el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span> - 相手の応手を選択';
+        isA = false;
+        setTimeout(function(){showBranchSheet(goteBranches, nextGotePly);}, 250);
+      } else {
+        if(exp.rFrom && exp.rTo){
+          el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span>';
+          setTimeout(function(){
+            var isRDrop = (exp.rFrom.indexOf("h_") === 0);
+            var rpt = isRDrop ? exp.rFrom.replace("h_", "") : (bS[exp.rFrom] ? bS[exp.rFrom].t : "桂");
 
-          if(!isRDrop && bS[exp.rFrom]) delete bS[exp.rFrom];
-          renderBoard();
-
-          anim(exp.rFrom, exp.rTo, rpt, 1, function(){
-            if(bS[exp.rTo]){
-              var rCap = unp[bS[exp.rTo].t] || bS[exp.rTo].t;
-              gHnd[rCap] = (gHnd[rCap] || 0) + 1;
+            if(!isRDrop && exp.rName.indexOf("成") !== -1 && rpt.indexOf("成") === -1){
+              if(rpt === "角") rpt = "馬"; else if(rpt === "飛") rpt = "竜"; else if(rpt === "歩") rpt = "と";
+              else if(rpt === "銀") rpt = "成銀"; else if(rpt === "桂") rpt = "成桂"; else if(rpt === "香") rpt = "成香";
             }
-            if(isRDrop) gHnd[rpt]--;
-            bS[exp.rTo] = {t: rpt, g: 1};
-            el.innerHTML += " 相手: " + exp.rName;
-            isA = false;
+
+            if(!isRDrop && bS[exp.rFrom]) delete bS[exp.rFrom];
             renderBoard();
 
-            // 相手の手（偶数手）が完了した直後、次の先手の手番に分岐があれば表示
-            var nextPly = (st * 2) + 1;
-            var branches = getBranchesAt(nextPly);
-            if(branches.length >= 2){
-              setTimeout(function(){showBranchSheet(branches, nextPly);}, 250);
-            }
-          });
-        }, 220);
-      } else {
-        var fr = Math.round((cCnt / bk.length) * 100);
-        el.innerHTML = '<span style="color:#1b5e20;">◯ 完了！ 正答率: ' + fr + '%</span>';
-        isA = false;
+            anim(exp.rFrom, exp.rTo, rpt, 1, function(){
+              if(bS[exp.rTo]){
+                var rCap = unp[bS[exp.rTo].t] || bS[exp.rTo].t;
+                gHnd[rCap] = (gHnd[rCap] || 0) + 1;
+              }
+              if(isRDrop) gHnd[rpt]--;
+              bS[exp.rTo] = {t: rpt, g: 1};
+              el.innerHTML += " 相手: " + exp.rName;
+              isA = false;
+              renderBoard();
+
+              // 相手のアニメーション完了後、次の先手番の分岐チェック
+              var nextSentePly = (st * 2) + 1;
+              var senteBranches = getBranchesAt(nextSentePly);
+              if(senteBranches.length >= 2){
+                setTimeout(function(){showBranchSheet(senteBranches, nextSentePly);}, 250);
+              }
+            });
+          }, 220);
+        } else {
+          var fr = Math.round((cCnt / bk.length) * 100);
+          el.innerHTML = '<span style="color:#1b5e20;">◯ 完了！ 正答率: ' + fr + '%</span>';
+          isA = false;
+        }
       }
     });
   } else {
