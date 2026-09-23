@@ -148,41 +148,58 @@ function delKif(){
   else{parsedTree=[];bk=[];rawMoves=[];rG();}
 }
 
+// 行パーサー：「同 桂(21)」の空白を完全に無視して正確に抽出
 function parseLineMove(l, px, py){
-  var clean=l.replace(/[\u00A0\u3000\s]+/g,' ').trim();
-  var m=clean.match(/^(\d+)\s+([^\s\(]+)(?:\s*\(([1-9]{2})\))?/);
-  if(!m) return null;
-  var ply=parseInt(m[1],10);
-  var moveCore=m[2];
-  var fromCoord=m[3];
-  var tx0=0,ty0=0,from=null;
+  // 先頭の手数を取得
+  var clean = l.replace(/[\u00A0\u3000\s]+/g, ' ').trim();
+  var firstSpace = clean.indexOf(' ');
+  if(firstSpace === -1) return null;
 
-  if(moveCore.indexOf("同")===0){tx0=px;ty0=py;}
-  else{tx0=cm[moveCore[0]];ty0=cm[moveCore[1]];}
+  var ply = parseInt(clean.substring(0, firstSpace), 10);
+  if(isNaN(ply)) return null;
 
-  if(moveCore.indexOf("打")!==-1){
-    var mPiece=moveCore.match(/([歩香桂銀金角飛])打/);
-    if(mPiece) from="h_"+mPiece[1];
-  }else if(fromCoord){
-    from=fromCoord[0]+","+fromCoord[1];
+  var rest = clean.substring(firstSpace).trim();
+  // 元座標 (21) を抽出
+  var fromCoord = null;
+  var op = rest.indexOf('('), cl = rest.indexOf(')');
+  if(op !== -1 && cl !== -1 && cl > op){
+    fromCoord = rest.substring(op + 1, cl).trim();
   }
 
-  if(tx0&&ty0&&from){
-    return {ply:ply,from:from,to:tx0+","+ty0,name:moveCore,tx:tx0,ty:ty0};
+  // 指し手コア文字列（空白を全削除）
+  var moveCore = rest.split('(')[0].replace(/[\u00A0\u3000\s]+/g, '');
+  var tx0 = 0, ty0 = 0, from = null;
+
+  if(moveCore.indexOf("同") === 0){
+    tx0 = px; ty0 = py;
+  } else {
+    tx0 = cm[moveCore[0]];
+    ty0 = cm[moveCore[1]];
+  }
+
+  if(moveCore.indexOf("打") !== -1){
+    var mPiece = moveCore.match(/([歩香桂銀金角飛])打/);
+    if(mPiece) from = "h_" + mPiece[1];
+  } else if(fromCoord){
+    from = fromCoord[0] + "," + fromCoord[1];
+  }
+
+  if(tx0 && ty0 && from){
+    return {ply: ply, from: from, to: tx0 + "," + ty0, name: moveCore, tx: tx0, ty: ty0};
   }
   return null;
 }
 
 function parseFullKif(tx){
-  var ls=tx.split(/\r?\n/);
-  var blocks=[],cur={startPly:1,lines:[],name:"本譜"};
-  for(var i=0;i<ls.length;i++){
-    var l=ls[i].replace(/[\u00A0\u3000\s]+/g,' ').trim();
-    if(!l||l.indexOf("*")===0)continue;
-    var bMatch=l.match(/^変化：(\d+)手/);
+  var ls = tx.split(/\r?\n/);
+  var blocks = [], cur = {startPly: 1, lines: [], name: "本譜"};
+  for(var i = 0; i < ls.length; i++){
+    var l = ls[i].replace(/[\u00A0\u3000\s]+/g, ' ').trim();
+    if(!l || l.indexOf("*") === 0) continue;
+    var bMatch = l.match(/^変化：(\d+)手/);
     if(bMatch){
       if(cur.lines.length) blocks.push(cur);
-      cur={startPly:parseInt(bMatch[1],10),lines:[],name:"変化："+bMatch[1]+"手"};
+      cur = {startPly: parseInt(bMatch[1], 10), lines: [], name: "変化：" + bMatch[1] + "手"};
       continue;
     }
     if(/^\d+\s+/.test(l)) cur.lines.push(l);
@@ -190,20 +207,23 @@ function parseFullKif(tx){
   if(cur.lines.length) blocks.push(cur);
   if(!blocks.length) return [];
 
-  for(var b=0;b<blocks.length;b++){
-    var blk=blocks[b];
-    blk.moves=[];
-    var px=0,py=0;
-    if(blk.startPly>1&&blocks[0].moves){
-      for(var k=0;k<blocks[0].moves.length;k++){
-        if(blocks[0].moves[k].ply===blk.startPly-1){
-          px=blocks[0].moves[k].tx;py=blocks[0].moves[k].ty;break;
+  for(var b = 0; b < blocks.length; b++){
+    var blk = blocks[b];
+    blk.moves = [];
+    var px = 0, py = 0;
+    if(blk.startPly > 1 && blocks[0].moves){
+      for(var k = 0; k < blocks[0].moves.length; k++){
+        if(blocks[0].moves[k].ply === blk.startPly - 1){
+          px = blocks[0].moves[k].tx; py = blocks[0].moves[k].ty; break;
         }
       }
     }
-    for(var j=0;j<blk.lines.length;j++){
-      var pm=parseLineMove(blk.lines[j],px,py);
-      if(pm){px=pm.tx;py=pm.ty;blk.moves.push(pm);}
+    for(var j = 0; j < blk.lines.length; j++){
+      var pm = parseLineMove(blk.lines[j], px, py);
+      if(pm){
+        px = pm.tx; py = pm.ty;
+        blk.moves.push(pm);
+      }
     }
   }
   return blocks;
@@ -211,398 +231,395 @@ function parseFullKif(tx){
 
 function buildSequenceFromBlock(blockIndex){
   if(!parsedTree.length) return;
-  currentBlockIndex=blockIndex;
-  var target=parsedTree[blockIndex];
-  var seq=[];
-  if(target.startPly===1){
-    seq=target.moves.slice();
-  }else{
-    var mainMoves=parsedTree[0].moves;
-    for(var i=0;i<mainMoves.length;i++){
-      if(mainMoves[i].ply<target.startPly) seq.push(mainMoves[i]);
+  currentBlockIndex = blockIndex;
+  var target = parsedTree[blockIndex];
+  var seq = [];
+  if(target.startPly === 1){
+    seq = target.moves.slice();
+  } else {
+    var mainMoves = parsedTree[0].moves;
+    for(var i = 0; i < mainMoves.length; i++){
+      if(mainMoves[i].ply < target.startPly) seq.push(mainMoves[i]);
       else break;
     }
-    seq=seq.concat(target.moves);
+    seq = seq.concat(target.moves);
   }
   applyMoveSequence(seq);
 }
 
 function applyMoveSequence(seq){
-  rawMoves=seq;
-  bk=[];
-  for(var j=0;j<rawMoves.length;j++){
-    var it=rawMoves[j];
-    if(it.ply%2===1){
-      var nx=rawMoves[j+1],has=nx&&(nx.ply===it.ply+1);
+  rawMoves = seq;
+  bk = [];
+  for(var j = 0; j < rawMoves.length; j++){
+    var it = rawMoves[j];
+    if(it.ply % 2 === 1){
+      var nx = rawMoves[j + 1], has = nx && (nx.ply === it.ply + 1);
       bk.push({
-        ply:it.ply,from:it.from,to:it.to,name:"▲"+it.name,
-        rFrom:has?nx.from:null,rTo:has?nx.to:null,rName:has?"△"+nx.name:"終了"
+        ply: it.ply, from: it.from, to: it.to, name: "▲" + it.name,
+        rFrom: has ? nx.from : null, rTo: has ? nx.to : null, rName: has ? "△" + nx.name : "終了"
       });
-      if(has)j++;
+      if(has) j++;
     }
   }
 }
 
 function lB(tx, kName){
-  if(kName) currentKifName=kName;
-  parsedTree=parseFullKif(tx);
-  if(!parsedTree.length||!parsedTree[0].moves.length){parsedTree=[];bk=[];rawMoves=[];rG();return;}
+  if(kName) currentKifName = kName;
+  parsedTree = parseFullKif(tx);
+  if(!parsedTree.length || !parsedTree[0].moves.length){parsedTree = []; bk = []; rawMoves = []; rG(); return;}
   buildSequenceFromBlock(0);
   rG();
 }
 
-// 指し手が異なる真の分岐のみを抽出
 function getBranchesAt(ply){
-  var branches=[];
-  for(var i=0;i<parsedTree.length;i++){
-    if(i===0){
-      for(var m=0;m<parsedTree[0].moves.length;m++){
-        if(parsedTree[0].moves[m].ply===ply){
-          branches.push({index:0,name:"本譜",moveName:parsedTree[0].moves[m].name,moveKey:parsedTree[0].moves[m].from+"->"+parsedTree[0].moves[m].to});
+  var branches = [];
+  for(var i = 0; i < parsedTree.length; i++){
+    if(i === 0){
+      for(var m = 0; m < parsedTree[0].moves.length; m++){
+        if(parsedTree[0].moves[m].ply === ply){
+          branches.push({index: 0, name: "本譜", moveName: parsedTree[0].moves[m].name, moveKey: parsedTree[0].moves[m].from + "->" + parsedTree[0].moves[m].to});
           break;
         }
       }
-    }else{
-      if(parsedTree[i].startPly===ply&&parsedTree[i].moves.length){
-        branches.push({index:i,name:parsedTree[i].name,moveName:parsedTree[i].moves[0].name,moveKey:parsedTree[i].moves[0].from+"->"+parsedTree[i].moves[0].to});
+    } else {
+      if(parsedTree[i].startPly === ply && parsedTree[i].moves.length){
+        branches.push({index: i, name: parsedTree[i].name, moveName: parsedTree[i].moves[0].name, moveKey: parsedTree[i].moves[0].from + "->" + parsedTree[i].moves[0].to});
       }
     }
   }
 
-  if(branches.length<=1) return [];
+  if(branches.length <= 1) return [];
 
-  // 全ての分岐の手が同一（同等手）であるかチェック
-  var firstKey=branches[0].moveKey;
-  var allSame=true;
-  for(var k=1;k<branches.length;k++){
-    if(branches[k].moveKey!==firstKey){
-      allSame=false;break;
+  var firstKey = branches[0].moveKey;
+  var allSame = true;
+  for(var k = 1; k < branches.length; k++){
+    if(branches[k].moveKey !== firstKey){
+      allSame = false; break;
     }
   }
-  // 全て同じ手なら選択肢を出す必要がないので空配列を返す
   if(allSame) return [];
 
   return branches;
 }
 
 function showBranchSheet(branches, currentPly){
-  var list=document.getElementById("bs-list");
-  list.innerHTML="";
-  document.getElementById("bs-title").innerText="🔀 "+currentPly+"手目の分岐ルート選択";
-  for(var i=0;i<branches.length;i++){
+  var list = document.getElementById("bs-list");
+  list.innerHTML = "";
+  document.getElementById("bs-title").innerText = "🔀 " + currentPly + "手目の分岐ルート選択";
+  for(var i = 0; i < branches.length; i++){
     (function(b){
-      var btn=document.createElement("button");
-      btn.className="bs-btn";
-      var stat=getBranchStatStr(currentKifName, b.name);
-      btn.innerHTML='<span>'+(b.index===0?"⭐ ":"🔀 ")+'<b>'+b.moveName+'</b> <small style="color:#555;">('+b.name+')</small></span><span class="bs-stat">'+stat+'</span>';
-      btn.onclick=function(){
+      var btn = document.createElement("button");
+      btn.className = "bs-btn";
+      var stat = getBranchStatStr(currentKifName, b.name);
+      btn.innerHTML = '<span>' + (b.index === 0 ? "⭐ " : "🔀 ") + '<b>' + b.moveName + '</b> <small style="color:#555;">(' + b.name + ')</small></span><span class="bs-stat">' + stat + '</span>';
+      btn.onclick = function(){
         closeBSheet();
         buildSequenceFromBlock(b.index);
-        jumpToExactPly(currentPly-1);
+        jumpToExactPly(currentPly - 1);
       };
       list.appendChild(btn);
     })(branches[i]);
   }
-  document.getElementById("bsheet").style.display="block";
+  document.getElementById("bsheet").style.display = "block";
 }
 
 function showBranchModalManual(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
-  var currentPly=(st*2)+1;
-  var bAt=getBranchesAt(currentPly);
+  var currentPly = (st * 2) + 1;
+  var bAt = getBranchesAt(currentPly);
   if(bAt.length){
     showBranchSheet(bAt, currentPly);
     return;
   }
-  var list=document.getElementById("bs-list");
-  list.innerHTML="";
-  document.getElementById("bs-title").innerText="🔀 切り替える分岐を選択";
-  for(var i=0;i<parsedTree.length;i++){
+  var list = document.getElementById("bs-list");
+  list.innerHTML = "";
+  document.getElementById("bs-title").innerText = "🔀 切り替える分岐を選択";
+  for(var i = 0; i < parsedTree.length; i++){
     (function(idx){
-      var b=parsedTree[idx];
-      var btn=document.createElement("button");
-      btn.className="bs-btn";
-      var mName=b.moves.length?b.moves[0].name:"";
-      var stat=getBranchStatStr(currentKifName, b.name);
-      btn.innerHTML='<span>'+(idx===0?"⭐ ":"🔀 ")+'<b>'+(idx===0?"本譜":b.name)+'</b> <small>('+mName+')</small></span><span class="bs-stat">'+stat+'</span>';
-      btn.onclick=function(){
+      var b = parsedTree[idx];
+      var btn = document.createElement("button");
+      btn.className = "bs-btn";
+      var mName = b.moves.length ? b.moves[0].name : "";
+      var stat = getBranchStatStr(currentKifName, b.name);
+      btn.innerHTML = '<span>' + (idx === 0 ? "⭐ " : "🔀 ") + '<b>' + (idx === 0 ? "本譜" : b.name) + '</b> <small>(' + mName + ')</small></span><span class="bs-stat">' + stat + '</span>';
+      btn.onclick = function(){
         closeBSheet();
         buildSequenceFromBlock(idx);
-        jumpToExactPly(b.startPly>1?(b.startPly-1):0);
+        jumpToExactPly(b.startPly > 1 ? (b.startPly - 1) : 0);
       };
       list.appendChild(btn);
     })(i);
   }
-  document.getElementById("bsheet").style.display="block";
+  document.getElementById("bsheet").style.display = "block";
 }
 
 function initB(){
-  bS={};sHnd={};gHnd={};hst=[];
-  for(var x=1;x<=9;x++){bS[x+",7"]={t:"歩",g:0};bS[x+",3"]={t:"歩",g:1};}
-  var b=["香","桂","銀","金","玉","金","銀","桂","香"];
-  for(var i=1;i<=9;i++){bS[(10-i)+",9"]={t:b[i-1],g:0};bS[i+",1"]={t:b[i-1]==="玉"?"王":b[i-1],g:1};}
-  bS["2,8"]={t:"飛",g:0};bS["8,8"]={t:"角",g:0};bS["8,2"]={t:"飛",g:1};bS["2,2"]={t:"角",g:1};
+  bS = {}; sHnd = {}; gHnd = {}; hst = [];
+  for(var x = 1; x <= 9; x++){bS[x + ",7"] = {t: "歩", g: 0}; bS[x + ",3"] = {t: "歩", g: 1};}
+  var b = ["香", "桂", "銀", "金", "玉", "金", "銀", "桂", "香"];
+  for(var i = 1; i <= 9; i++){bS[(10 - i) + ",9"] = {t: b[i - 1], g: 0}; bS[i + ",1"] = {t: b[i - 1] === "玉" ? "王" : b[i - 1], g: 1};}
+  bS["2,8"] = {t: "飛", g: 0}; bS["8,8"] = {t: "角", g: 0}; bS["8,2"] = {t: "飛", g: 1}; bS["2,2"] = {t: "角", g: 1};
 }
 function uScr(){
-  var el=document.getElementById("sb");
-  if(isR||!bk||!bk.length){el.style.display="none";return;}
-  el.style.display="flex";
-  var currentPly=st*2;
-  var totalPly=rawMoves.length;
-  var rt=st===0?100:Math.round((cCnt/st)*100);
-  var curBName=parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].name:"本譜";
-  el.innerHTML='<span>['+curBName+'] '+currentPly+'/'+totalPly+'手</span><span>正答率: '+rt+'% ('+cCnt+'/'+st+')</span>';
+  var el = document.getElementById("sb");
+  if(isR || !bk || !bk.length){el.style.display = "none"; return;}
+  el.style.display = "flex";
+  var currentPly = st * 2;
+  var totalPly = rawMoves.length;
+  var rt = st === 0 ? 100 : Math.round((cCnt / st) * 100);
+  var curBName = parsedTree[currentBlockIndex] ? parsedTree[currentBlockIndex].name : "本譜";
+  el.innerHTML = '<span>[' + curBName + '] ' + currentPly + '/' + totalPly + '手</span><span>正答率: ' + rt + '% (' + cCnt + '/' + st + ')</span>';
 }
-function svH(){hst.push({b:JSON.parse(JSON.stringify(bS)),sh:JSON.parse(JSON.stringify(sHnd)),gh:JSON.parse(JSON.stringify(gHnd)),st:st,tx:document.getElementById("st").innerHTML,rt:rTurn,rl:rLines.slice(),cc:cCnt,hf:hFail});}
-function uM(){if(isA||!hst.length)return;closeBSheet();var p=hst.pop();bS=p.b;sHnd=p.sh;gHnd=p.gh;st=p.st;sF=null;hI=null;cCnt=p.cc;hFail=p.hf;if(isR){rTurn=p.rt;rLines=p.rl;uRSt();}else{document.getElementById("st").innerHTML=p.tx;uScr();}renderBoard();}
+function svH(){hst.push({b: JSON.parse(JSON.stringify(bS)), sh: JSON.parse(JSON.stringify(sHnd)), gh: JSON.parse(JSON.stringify(gHnd)), st: st, tx: document.getElementById("st").innerHTML, rt: rTurn, rl: rLines.slice(), cc: cCnt, hf: hFail});}
+function uM(){if(isA || !hst.length) return; closeBSheet(); var p = hst.pop(); bS = p.b; sHnd = p.sh; gHnd = p.gh; st = p.st; sF = null; hI = null; cCnt = p.cc; hFail = p.hf; if(isR){rTurn = p.rt; rLines = p.rl; uRSt();} else {document.getElementById("st").innerHTML = p.tx; uScr();} renderBoard();}
 
 function jumpToExactPly(playCount){
   closeBSheet();
   initB();
-  for(var i=0;i<playCount;i++){
-    if(i>=rawMoves.length)break;
-    var m=rawMoves[i];
-    var isG=(i%2===1);
-    var isD=(m.from.indexOf("h_")===0);
-    var ptName=isD?m.from.replace("h_",""):(bS[m.from]?bS[m.from].t:"歩");
+  for(var i = 0; i < playCount; i++){
+    if(i >= rawMoves.length) break;
+    var m = rawMoves[i];
+    var isG = (i % 2 === 1);
+    var isD = (m.from.indexOf("h_") === 0);
+    var ptName = isD ? m.from.replace("h_", "") : (bS[m.from] ? bS[m.from].t : "歩");
 
-    if(!isD&&m.name.indexOf("成")!==-1&&ptName.indexOf("成")===-1){
-      if(ptName==="角")ptName="馬";else if(ptName==="飛")ptName="竜";else if(ptName==="歩")ptName="と";
-      else if(ptName==="銀")ptName="成銀";else if(ptName==="桂")ptName="成桂";else if(ptName==="香")ptName="成香";
+    if(!isD && m.name.indexOf("成") !== -1 && ptName.indexOf("成") === -1){
+      if(ptName === "角") ptName = "馬"; else if(ptName === "飛") ptName = "竜"; else if(ptName === "歩") ptName = "と";
+      else if(ptName === "銀") ptName = "成銀"; else if(ptName === "桂") ptName = "成桂"; else if(ptName === "香") ptName = "成香";
     }
 
     if(!isD) delete bS[m.from];
-    else{
+    else {
       if(isG) gHnd[ptName]--;
       else sHnd[ptName]--;
     }
 
     if(bS[m.to]){
-      var cap=unp[bS[m.to].t]||bS[m.to].t;
-      if(isG) gHnd[cap]=(gHnd[cap]||0)+1;
-      else sHnd[cap]=(sHnd[cap]||0)+1;
+      var cap = unp[bS[m.to].t] || bS[m.to].t;
+      if(isG) gHnd[cap] = (gHnd[cap] || 0) + 1;
+      else sHnd[cap] = (sHnd[cap] || 0) + 1;
     }
-    bS[m.to]={t:ptName,g:isG?1:0};
+    bS[m.to] = {t: ptName, g: isG ? 1 : 0};
   }
 
-  st=Math.floor(playCount/2);
-  sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;
-  var el=document.getElementById("st");
-  if(st<bk.length) el.innerHTML='<span style="color:#2e7d32;">▶ '+(st*2)+'手目局面（▲'+bk[st].name+'）</span>';
-  else el.innerText="最終手まで進みました";
-  uScr();renderBoard();
+  st = Math.floor(playCount / 2);
+  sF = null; hI = null; isA = false; hst = []; cCnt = 0; hFail = false;
+  var el = document.getElementById("st");
+  if(st < bk.length) el.innerHTML = '<span style="color:#2e7d32;">▶ ' + (st * 2) + '手目局面（▲' + bk[st].name + '）</span>';
+  else el.innerText = "最終手まで進みました";
+  uScr(); renderBoard();
 }
 
 function jumpToPly(){
   if(!rawMoves.length){alert("棋譜が読み込まれていません");return;}
-  var maxPly=rawMoves.length;
-  var input=prompt("何手目まで進めて練習しますか？ (0〜"+maxPly+"手目):", (st*2).toString());
-  if(input===null)return;
-  var target=parseInt(input,10);
-  if(isNaN(target)||target<0||target>maxPly){alert("0から"+maxPly+"の数値を入力してください");return;}
-  var playCount=target;
-  if(playCount%2!==0) playCount--;
+  var maxPly = rawMoves.length;
+  var input = prompt("何手目まで進めて練習しますか？ (0〜" + maxPly + "手目):", (st * 2).toString());
+  if(input === null) return;
+  var target = parseInt(input, 10);
+  if(isNaN(target) || target < 0 || target > maxPly){alert("0から" + maxPly + "の数値を入力してください");return;}
+  var playCount = target;
+  if(playCount % 2 !== 0) playCount--;
   jumpToExactPly(playCount);
 }
 
 function renderBoard(wK){
-  var tb=document.getElementById("tb");tb.innerHTML="";
-  for(var y=1;y<=9;y++){
-    var tr=document.createElement("tr");
-    for(var x=9;x>=1;x--){
-      var td=document.createElement("td"),k=x+","+y;td.id="c_"+k;
-      if(sF===k)td.className="sel";
-      if(hI&&hI.from===k)td.className="h-from";
-      if(hI&&hI.to===k)td.className="h-to";
-      if(wK===k)td.className="w-cell";
-      var p=bS[k];
-      if(p){var sp=document.createElement("span");sp.className="piece";sp.innerText=p.t;if(p.g)td.className+=" gote";td.appendChild(sp);}
-      (function(cx,cy){td.onclick=function(){onC(cx,cy);};})(x,y);
+  var tb = document.getElementById("tb"); tb.innerHTML = "";
+  for(var y = 1; y <= 9; y++){
+    var tr = document.createElement("tr");
+    for(var x = 9; x >= 1; x--){
+      var td = document.createElement("td"), k = x + "," + y; td.id = "c_" + k;
+      if(sF === k) td.className = "sel";
+      if(hI && hI.from === k) td.className = "h-from";
+      if(hI && hI.to === k) td.className = "h-to";
+      if(wK === k) td.className = "w-cell";
+      var p = bS[k];
+      if(p){var sp = document.createElement("span"); sp.className = "piece"; sp.innerText = p.t; if(p.g) td.className += " gote"; td.appendChild(sp);}
+      (function(cx, cy){td.onclick = function(){onC(cx, cy);};})(x, y);
       tr.appendChild(td);
     }
     tb.appendChild(tr);
   }
-  var sh=document.getElementById("sh"),gh=document.getElementById("gh");
-  sh.innerHTML='<span style="font-size:11px;font-weight:bold;">先手:</span>';
-  gh.innerHTML='<span style="font-size:11px;font-weight:bold;">後手:</span>';
+  var sh = document.getElementById("sh"), gh = document.getElementById("gh");
+  sh.innerHTML = '<span style="font-size:11px;font-weight:bold;">先手:</span>';
+  gh.innerHTML = '<span style="font-size:11px;font-weight:bold;">後手:</span>';
   for(var sp in sHnd){
-    if(sHnd[sp]>0)(function(pn){
-      var d=document.createElement("div");d.id="hs_"+pn;d.className="hp"+(sF===("h_"+pn)?" sel":"");
-      d.innerHTML='<span class="piece">'+pn+'</span>'+(sHnd[pn]>1?'<span class="hcnt">'+sHnd[pn]+'</span>':'');
-      d.onclick=function(){if(!isA&&(!isR||rTurn===0)){closeBSheet();hI=null;sF=(sF===("h_"+pn))?null:("h_"+pn);renderBoard();}};
+    if(sHnd[sp] > 0)(function(pn){
+      var d = document.createElement("div"); d.id = "hs_" + pn; d.className = "hp" + (sF === ("h_" + pn) ? " sel" : "");
+      d.innerHTML = '<span class="piece">' + pn + '</span>' + (sHnd[pn] > 1 ? '<span class="hcnt">' + sHnd[pn] + '</span>' : '');
+      d.onclick = function(){if(!isA && (!isR || rTurn === 0)){closeBSheet(); hI = null; sF = (sF === ("h_" + pn)) ? null : ("h_" + pn); renderBoard();}};
       sh.appendChild(d);
     })(sp);
   }
   for(var gp in gHnd){
-    if(gHnd[gp]>0)(function(gpn){
-      var d=document.createElement("div");d.id="hg_"+gpn;d.className="hp gote"+(sF===("h_g_"+gpn)?" sel":"");
-      d.innerHTML='<span class="piece">'+gpn+'</span>'+(gHnd[gp]>1?'<span class="hcnt">'+gHnd[gp]+'</span>':'');
-      d.onclick=function(){if(!isA&&isR&&rTurn===1){closeBSheet();hI=null;sF=(sF===("h_g_"+gpn))?null:("h_g_"+gpn);renderBoard();}};
+    if(gHnd[gp] > 0)(function(gpn){
+      var d = document.createElement("div"); d.id = "hg_" + gpn; d.className = "hp gote" + (sF === ("h_g_" + gpn) ? " sel" : "");
+      d.innerHTML = '<span class="piece">' + gpn + '</span>' + (gHnd[gp] > 1 ? '<span class="hcnt">' + gHnd[gp] + '</span>' : '');
+      d.onclick = function(){if(!isA && isR && rTurn === 1){closeBSheet(); hI = null; sF = (sF === ("h_g_" + gpn)) ? null : ("h_g_" + gpn); renderBoard();}};
       gh.appendChild(d);
     })(gp);
   }
 }
 
-function anim(fk,tk,tx,isG,cb){
-  var frEl=(fk.indexOf("h_")===0)?document.getElementById((isG?"hg_":"hs_")+fk.replace("h_g_","").replace("h_","")):document.getElementById("c_"+fk);
-  if(!frEl)frEl=document.getElementById(isG?"gh":"sh");
-  var trEl=document.getElementById("c_"+tk);
-  if(!frEl||!trEl){cb();return;}
-  var fr=frEl.getBoundingClientRect(),tr=trEl.getBoundingClientRect();
-  var sx=fr.left+(fr.width-tr.width*.85)/2,sy=fr.top+(fr.height-tr.height*.85)/2,ex=tr.left+(tr.width-tr.width*.85)/2,ey=tr.top+(tr.height-tr.height*.85)/2;
-  var fl=document.createElement("div");fl.className="piece fly"+(isG?" gote":"");fl.innerText=tx;fl.style.left="0";fl.style.top="0";
-  fl.style.transform="translate3d("+sx+"px,"+sy+"px,0)"+(isG?" rotate(180deg)":"");document.body.appendChild(fl);
-  requestAnimationFrame(function(){requestAnimationFrame(function(){fl.style.transform="translate3d("+ex+"px,"+ey+"px,0)"+(isG?" rotate(180deg)":"");});});
-  setTimeout(function(){if(fl.parentNode)fl.parentNode.removeChild(fl);cb();},190);
+function anim(fk, tk, tx, isG, cb){
+  var frEl = (fk.indexOf("h_") === 0) ? document.getElementById((isG ? "hg_" : "hs_") + fk.replace("h_g_", "").replace("h_", "")) : document.getElementById("c_" + fk);
+  if(!frEl) frEl = document.getElementById(isG ? "gh" : "sh");
+  var trEl = document.getElementById("c_" + tk);
+  if(!frEl || !trEl){cb(); return;}
+  var fr = frEl.getBoundingClientRect(), tr = trEl.getBoundingClientRect();
+  var sx = fr.left + (fr.width - tr.width * 0.85) / 2, sy = fr.top + (fr.height - tr.height * 0.85) / 2;
+  var ex = tr.left + (tr.width - tr.width * 0.85) / 2, ey = tr.top + (tr.height - tr.height * 0.85) / 2;
+  var fl = document.createElement("div"); fl.className = "piece fly" + (isG ? " gote" : ""); fl.innerText = tx; fl.style.left = "0"; fl.style.top = "0";
+  fl.style.transform = "translate3d(" + sx + "px," + sy + "px,0)" + (isG ? " rotate(180deg)" : ""); document.body.appendChild(fl);
+  requestAnimationFrame(function(){requestAnimationFrame(function(){fl.style.transform = "translate3d(" + ex + "px," + ey + "px,0)" + (isG ? " rotate(180deg)" : "");});});
+  setTimeout(function(){if(fl.parentNode) fl.parentNode.removeChild(fl); cb();}, 190);
 }
 
-function onC(x,y){
-  if(isA)return;var k=x+","+y;if(isR){hRec(x,y,k);return;}
-  var el=document.getElementById("st");hI=null;
-  if(!bk.length){el.innerText="棋譜を登録または選択してください";return;}
-  if(!sF){if(bS[k]&&!bS[k].g){closeBSheet();sF=k;renderBoard();}return;}
-  if(sF===k){sF=null;renderBoard();return;}
-  if(sF.indexOf("h_")!==0&&bS[k]&&!bS[k].g){closeBSheet();sF=k;renderBoard();}
+function onC(x, y){
+  if(isA) return; var k = x + "," + y; if(isR){hRec(x, y, k); return;}
+  var el = document.getElementById("st"); hI = null;
+  if(!bk.length){el.innerText = "棋譜を登録または選択してください"; return;}
+  if(!sF){if(bS[k] && !bS[k].g){closeBSheet(); sF = k; renderBoard();} return;}
+  if(sF === k){sF = null; renderBoard(); return;}
+  if(sF.indexOf("h_") !== 0 && bS[k] && !bS[k].g){closeBSheet(); sF = k; renderBoard(); return;}
 
-  var from=sF,to=k;sF=null;if(st>=bk.length)return;
-  var exp=bk[st];
-  var isDrop=(from.indexOf("h_")===0);
-  var pt=isDrop?from.replace("h_",""):bS[from].t;
+  var from = sF, to = k; sF = null; if(st >= bk.length) return;
+  var exp = bk[st];
+  var isDrop = (from.indexOf("h_") === 0);
+  var pt = isDrop ? from.replace("h_", "") : bS[from].t;
 
-  var isMatch=false;
-  if(isDrop) isMatch=(exp.from==="h_"+pt && exp.to===to);
-  else isMatch=(exp.from===from && exp.to===to);
+  var isMatch = false;
+  if(isDrop) isMatch = (exp.from === "h_" + pt && exp.to === to);
+  else isMatch = (exp.from === from && exp.to === to);
 
-  var curBName=parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].name:"本譜";
+  var curBName = parsedTree[currentBlockIndex] ? parsedTree[currentBlockIndex].name : "本譜";
 
   if(isMatch){
-    svH();isA=true;
+    svH(); isA = true;
     if(!hFail){
       cCnt++;
       saveBranchStat(currentKifName, curBName, true);
     }
-    if(!isDrop&&exp.name.indexOf("成")!==-1&&pt.indexOf("成")===-1){
-      if(pt==="角")pt="馬";else if(pt==="飛")pt="竜";else if(pt==="歩")pt="と";
-      else if(pt==="銀")pt="成銀";else if(pt==="桂")pt="成桂";else if(pt==="香")pt="成香";
+    if(!isDrop && exp.name.indexOf("成") !== -1 && pt.indexOf("成") === -1){
+      if(pt === "角") pt = "馬"; else if(pt === "飛") pt = "竜"; else if(pt === "歩") pt = "と";
+      else if(pt === "銀") pt = "成銀"; else if(pt === "桂") pt = "成桂"; else if(pt === "香") pt = "成香";
     }
-    if(!isDrop)delete bS[from];renderBoard();
-    anim(from,to,pt,0,function(){
+    if(!isDrop) delete bS[from]; renderBoard();
+    anim(from, to, pt, 0, function(){
       if(bS[to]){
-        var cap=unp[bS[to].t]||bS[to].t;
-        sHnd[cap]=(sHnd[cap]||0)+1;
+        var cap = unp[bS[to].t] || bS[to].t;
+        sHnd[cap] = (sHnd[cap] || 0) + 1;
       }
       if(isDrop) sHnd[pt]--;
-      bS[to]={t:pt,g:0};st++;hFail=false;uScr();renderBoard();
+      bS[to] = {t: pt, g: 0}; st++; hFail = false; uScr(); renderBoard();
 
-      if(exp.rFrom&&exp.rTo){
-        el.innerHTML='<span style="color:#1b5e20;">◯ 正解 ('+exp.name+')</span>';
+      if(exp.rFrom && exp.rTo){
+        el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span>';
         setTimeout(function(){
-          var isRDrop=(exp.rFrom.indexOf("h_")===0);
-          var rpt=isRDrop?exp.rFrom.replace("h_",""):(bS[exp.rFrom]?bS[exp.rFrom].t:"歩");
-          if(!isRDrop&&exp.rName.indexOf("成")!==-1&&rpt.indexOf("成")===-1){
-            if(rpt==="角")rpt="馬";else if(rpt==="飛")rpt="竜";else if(rpt==="歩")rpt="と";
-            else if(rpt==="銀")rpt="成銀";else if(rpt==="桂")rpt="成桂";else if(rpt==="香")rpt="成香";
+          var isRDrop = (exp.rFrom.indexOf("h_") === 0);
+          var rpt = isRDrop ? exp.rFrom.replace("h_", "") : (bS[exp.rFrom] ? bS[exp.rFrom].t : "歩");
+          if(!isRDrop && exp.rName.indexOf("成") !== -1 && rpt.indexOf("成") === -1){
+            if(rpt === "角") rpt = "馬"; else if(rpt === "飛") rpt = "竜"; else if(rpt === "歩") rpt = "と";
+            else if(rpt === "銀") rpt = "成銀"; else if(rpt === "桂") rpt = "成桂"; else if(rpt === "香") rpt = "成香";
           }
-          if(!isRDrop)delete bS[exp.rFrom];renderBoard();
-          anim(exp.rFrom,exp.rTo,rpt,1,function(){
+          if(!isRDrop) delete bS[exp.rFrom]; renderBoard();
+          anim(exp.rFrom, exp.rTo, rpt, 1, function(){
             if(bS[exp.rTo]){
-              var rCap=unp[bS[exp.rTo].t]||bS[exp.rTo].t;
-              gHnd[rCap]=(gHnd[rCap]||0)+1;
+              var rCap = unp[bS[exp.rTo].t] || bS[exp.rTo].t;
+              gHnd[rCap] = (gHnd[rCap] || 0) + 1;
             }
             if(isRDrop) gHnd[rpt]--;
-            bS[exp.rTo]={t:rpt,g:1};
-            el.innerHTML+=" 相手: "+exp.rName;
-            isA=false;
+            bS[exp.rTo] = {t: rpt, g: 1};
+            el.innerHTML += " 相手: " + exp.rName;
+            isA = false;
             renderBoard();
 
-            // 次の手番で指し手が分かれる「真の分岐」が存在する場合のみシートを表示
-            var nextPly=(st*2)+1;
-            var branches=getBranchesAt(nextPly);
+            var nextPly = (st * 2) + 1;
+            var branches = getBranchesAt(nextPly);
             if(branches.length){
-              setTimeout(function(){showBranchSheet(branches, nextPly);},300);
+              setTimeout(function(){showBranchSheet(branches, nextPly);}, 300);
             }
           });
-        },220);
-      }else{
-        var fr=Math.round((cCnt/bk.length)*100);
-        el.innerHTML='<span style="color:#1b5e20;">◯ 完了！ 正答率: '+fr+'%</span>';
-        isA=false;
+        }, 220);
+      } else {
+        var fr = Math.round((cCnt / bk.length) * 100);
+        el.innerHTML = '<span style="color:#1b5e20;">◯ 完了！ 正答率: ' + fr + '%</span>';
+        isA = false;
       }
     });
-  }else{
+  } else {
     if(!hFail){
       saveBranchStat(currentKifName, curBName, false);
     }
-    hFail=true;isA=true;var op=isDrop?null:bS[from];if(!isDrop)delete bS[from];renderBoard();
-    anim(from,to,pt,0,function(){
-      el.innerHTML='<span style="color:#c62828;">× 定跡外れ！</span>';renderBoard(to);
+    hFail = true; isA = true; var op = isDrop ? null : bS[from]; if(!isDrop) delete bS[from]; renderBoard();
+    anim(from, to, pt, 0, function(){
+      el.innerHTML = '<span style="color:#c62828;">× 定跡外れ！</span>'; renderBoard(to);
       setTimeout(function(){
-        anim(to,from,pt,0,function(){if(!isDrop)bS[from]=op;isA=false;renderBoard();});
-      },450);
+        anim(to, from, pt, 0, function(){if(!isDrop) bS[from] = op; isA = false; renderBoard();});
+      }, 450);
     });
   }
 }
 
-function sRec(){isR=true;rTurn=0;rLines=[];document.getElementById("rbar").style.display="block";document.getElementById("pbtns").style.display="none";document.getElementById("sb").style.display="none";closeBSheet();initB();uRSt();renderBoard();}
-function eRec(){isR=false;document.getElementById("rbar").style.display="none";document.getElementById("pbtns").style.display="flex";rG();}
-function uRSt(){document.getElementById("st").innerHTML='<span style="color:#d81b60;">🔴 記録中: '+(rTurn===0?"▲先手":"△後手")+' ('+rLines.length+'手完了)</span>';}
-function hRec(x,y,k){
-  var isG=rTurn===1;if(!sF){if(bS[k]&&bS[k].g===(isG?1:0)){sF=k;renderBoard();}return;}
-  if(sF===k){sF=null;renderBoard();return;}
-  if(sF.indexOf("h_")!==0&&bS[k]&&bS[k].g===(isG?1:0)){sF=k;renderBoard();return;}
-  var from=sF;sF=null;var isD=from.indexOf("h_")===0,pn="",fc="";svH();isA=true;
+function sRec(){isR = true; rTurn = 0; rLines = []; document.getElementById("rbar").style.display = "block"; document.getElementById("pbtns").style.display = "none"; document.getElementById("sb").style.display = "none"; closeBSheet(); initB(); uRSt(); renderBoard();}
+function eRec(){isR = false; document.getElementById("rbar").style.display = "none"; document.getElementById("pbtns").style.display = "flex"; rG();}
+function uRSt(){document.getElementById("st").innerHTML = '<span style="color:#d81b60;">🔴 記録中: ' + (rTurn === 0 ? "▲先手" : "△後手") + ' (' + rLines.length + '手完了)</span>';}
+function hRec(x, y, k){
+  var isG = rTurn === 1; if(!sF){if(bS[k] && bS[k].g === (isG ? 1 : 0)){sF = k; renderBoard();} return;}
+  if(sF === k){sF = null; renderBoard(); return;}
+  if(sF.indexOf("h_") !== 0 && bS[k] && bS[k].g === (isG ? 1 : 0)){sF = k; renderBoard(); return;}
+  var from = sF; sF = null; var isD = from.indexOf("h_") === 0, pn = "", fc = ""; svH(); isA = true;
   if(isD){
-    pn=from.replace(isG?"h_g_":"h_","");if(isG)gHnd[pn]--;else sHnd[pn]--;
-    bS[k]={t:pn,g:isG?1:0};
-    anim(from,k,pn,isG?1:0,function(){rLines.push((rLines.length+1)+" "+zn[x]+kn[y]+pn+"打");rTurn=1-rTurn;isA=false;uRSt();renderBoard();});
-  }else{
-    var pObj=bS[from];pn=pObj.t;fc=from.replace(",","");delete bS[from];
-    var cP=false;
-    if(!unp[pn]&&pn!=="金"&&pn!=="玉"&&pn!=="王"){
-      var fy=parseInt(from.split(",")[1],10);
-      if((!isG&&(y<=3||fy<=3))||(isG&&(y>=7||fy>=7)))cP=true;
+    pn = from.replace(isG ? "h_g_" : "h_", ""); if(isG) gHnd[pn]--; else sHnd[pn]--;
+    bS[k] = {t: pn, g: isG ? 1 : 0};
+    anim(from, k, pn, isG ? 1 : 0, function(){rLines.push((rLines.length + 1) + " " + zn[x] + kn[y] + pn + "打"); rTurn = 1 - rTurn; isA = false; uRSt(); renderBoard();});
+  } else {
+    var pObj = bS[from]; pn = pObj.t; fc = from.replace(",", ""); delete bS[from];
+    var cP = false;
+    if(!unp[pn] && pn !== "金" && pn !== "玉" && pn !== "王"){
+      var fy = parseInt(from.split(",")[1], 10);
+      if((!isG && (y <= 3 || fy <= 3)) || (isG && (y >= 7 || fy >= 7))) cP = true;
     }
-    var dP=cP&&confirm("成りますか？");var fn=pn;
-    if(dP){fn=(pn==="歩"?"と":pn==="角"?"馬":pn==="飛"?"竜":"成"+pn);}
-    anim(from,k,fn,isG?1:0,function(){
-      if(bS[k]){var c=unp[bS[k].t]||bS[k].t;if(isG)gHnd[c]=(gHnd[c]||0)+1;else sHnd[c]=(sHnd[c]||0)+1;}
-      bS[k]={t:fn,g:isG?1:0};
-      rLines.push((rLines.length+1)+" "+zn[x]+kn[y]+pn+(dP?"成":"")+"("+fc+")");
-      rTurn=1-rTurn;isA=false;uRSt();renderBoard();
+    var dP = cP && confirm("成りますか？"); var fn = pn;
+    if(dP){fn = (pn === "歩" ? "と" : pn === "角" ? "馬" : pn === "飛" ? "竜" : "成" + pn);}
+    anim(from, k, fn, isG ? 1 : 0, function(){
+      if(bS[k]){var c = unp[bS[k].t] || bS[k].t; if(isG) gHnd[c] = (gHnd[c] || 0) + 1; else sHnd[c] = (sHnd[c] || 0) + 1;}
+      bS[k] = {t: fn, g: isG ? 1 : 0};
+      rLines.push((rLines.length + 1) + " " + zn[x] + kn[y] + pn + (dP ? "成" : "") + "(" + fc + ")");
+      rTurn = 1 - rTurn; isA = false; uRSt(); renderBoard();
     });
   }
 }
-function fRec(){if(!rLines.length){alert("手がありません");return;}var t=prompt("定跡名を入力:","新定跡_"+(new Date().getMonth()+1)+"月"+new Date().getDate()+"日");if(!t)return;regK(t,rLines.join("\n"));eRec();}
-function sH(){if(!bk.length||st>=bk.length||isA)return;hFail=true;hI={from:bk[st].from,to:bk[st].to};document.getElementById("st").innerHTML='<span style="color:#0277bd;">💡 正解: 【'+bk[st].name+'】</span>';renderBoard();}
+function fRec(){if(!rLines.length){alert("手がありません");return;}var t = prompt("定跡名を入力:", "新定跡_" + (new Date().getMonth() + 1) + "月" + new Date().getDate() + "日");if(!t)return;regK(t, rLines.join("\n"));eRec();}
+function sH(){if(!bk.length || st >= bk.length || isA) return; hFail = true; hI = {from: bk[st].from, to: bk[st].to}; document.getElementById("st").innerHTML = '<span style="color:#0277bd;">💡 正解: 【' + bk[st].name + '】</span>'; renderBoard();}
 function rG(){
-  closeBSheet();st=0;sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;
-  var el=document.getElementById("st");
-  if(bk.length) el.innerText="初手を指してください（"+bk[0].name+"）";
-  else el.innerText="棋譜を登録または選択してください";
-  initB();uScr();renderBoard();
+  closeBSheet(); st = 0; sF = null; hI = null; isA = false; hst = []; cCnt = 0; hFail = false;
+  var el = document.getElementById("st");
+  if(bk.length) el.innerText = "初手を指してください（" + bk[0].name + "）";
+  else el.innerText = "棋譜を登録または選択してください";
+  initB(); uScr(); renderBoard();
 }
-function oSync(){document.getElementById("sx").value=localStorage.getItem("skifs_min")||JSON.stringify(skifs);oM("smodal");}
-function cSync(){document.getElementById("sx").select();document.execCommand("copy");alert("コピー完了");}
-function aSync(){try{skifs=JSON.parse(document.getElementById("sx").value.trim());localStorage.setItem("skifs_min",JSON.stringify(skifs));var rk=Object.keys(skifs);uD(rk.length?rk[0]:"");if(rk.length)lB(skifs[rk[0]],rk[0]);else{parsedTree=[];bk=[];rawMoves=[];rG();}cM("smodal");alert("同期完了");}catch(e){alert("形式不正");}}
+function oSync(){document.getElementById("sx").value = localStorage.getItem("skifs_min") || JSON.stringify(skifs); oM("smodal");}
+function cSync(){document.getElementById("sx").select(); document.execCommand("copy"); alert("コピー完了");}
+function aSync(){try{skifs = JSON.parse(document.getElementById("sx").value.trim()); localStorage.setItem("skifs_min", JSON.stringify(skifs)); var rk = Object.keys(skifs); uD(rk.length ? rk[0] : ""); if(rk.length) lB(skifs[rk[0]], rk[0]); else {parsedTree = []; bk = []; rawMoves = []; rG();} cM("smodal"); alert("同期完了");}catch(e){alert("形式不正");}}
 
-window.addEventListener("dragover",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="flex";});
-window.addEventListener("dragleave",function(e){if(e.clientX<=0||e.clientY<=0){var d=document.getElementById("d-ovl");if(d)d.style.display="none";}});
-window.addEventListener("drop",function(e){
-  e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="none";
-  var f=e.dataTransfer.files[0];if(!f)return;
-  var rdr=new FileReader();rdr.onload=function(ev){regK(f.name.replace(/\.[^/.]+$/,""),ev.target.result);};rdr.readAsText(f,"Shift_JIS");
+window.addEventListener("dragover", function(e){e.preventDefault(); var d = document.getElementById("d-ovl"); if(d) d.style.display = "flex";});
+window.addEventListener("dragleave", function(e){if(e.clientX <= 0 || e.clientY <= 0){var d = document.getElementById("d-ovl"); if(d) d.style.display = "none";}});
+window.addEventListener("drop", function(e){
+  e.preventDefault(); var d = document.getElementById("d-ovl"); if(d) d.style.display = "none";
+  var f = e.dataTransfer.files[0]; if(!f) return;
+  var rdr = new FileReader(); rdr.onload = function(ev){regK(f.name.replace(/\.[^/.]+$/, ""), ev.target.result);}; rdr.readAsText(f, "Shift_JIS");
 });
 
 initB();
-try{var d=localStorage.getItem("skifs_min");if(d)skifs=JSON.parse(d);}catch(e){skifs={};}
+try{var d = localStorage.getItem("skifs_min"); if(d) skifs = JSON.parse(d);}catch(e){skifs = {};}
 if(skifs && skifs["エルモ囲い（基本形）"]){
   delete skifs["エルモ囲い（基本形）"];
-  try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}
+  try{localStorage.setItem("skifs_min", JSON.stringify(skifs));}catch(e){}
 }
-var ks=Object.keys(skifs);
-uD(ks.length?ks[0]:"");
-if(ks.length)lB(skifs[ks[0]], ks[0]);
-else{bk=[];rawMoves=[];rG();}
+var ks = Object.keys(skifs);
+uD(ks.length ? ks[0] : "");
+if(ks.length) lB(skifs[ks[0]], ks[0]);
+else {bk = []; rawMoves = []; rG();}
 </script>
 </body>
 </html>
