@@ -6,7 +6,7 @@
 <title>定跡チェッカー</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
-body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 120px 4px;user-select:none;}
+body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
 h2{font-size:1rem;margin:2px;}
 #sb{display:none;font-size:.85rem;font-weight:bold;margin:2px auto;max-width:390px;justify-content:space-between;padding:2px 8px;background:#e0e7ed;border-radius:4px;}
 #st{font-size:.95rem;font-weight:bold;margin:3px 0;min-height:22px;}
@@ -148,10 +148,10 @@ function delKif(){
   else{parsedTree=[];bk=[];rawMoves=[];rG();}
 }
 
-// 行パーサー：「同 桂(21)」の空白を完全に無視して正確に抽出
+// 1行パーサー：消費時間表記を完全除去し、指し手と元座標を安全に抽出
 function parseLineMove(l, px, py){
-  // 先頭の手数を取得
-  var clean = l.replace(/[\u00A0\u3000\s]+/g, ' ').trim();
+  var clean = l.replace(/\(\s*\d+:\d+.*?\)/g, ''); // ( 0:00/00:00:00) を消去
+  clean = clean.replace(/[\u00A0\u3000\s]+/g, ' ').trim();
   var firstSpace = clean.indexOf(' ');
   if(firstSpace === -1) return null;
 
@@ -159,15 +159,11 @@ function parseLineMove(l, px, py){
   if(isNaN(ply)) return null;
 
   var rest = clean.substring(firstSpace).trim();
-  // 元座標 (21) を抽出
   var fromCoord = null;
-  var op = rest.indexOf('('), cl = rest.indexOf(')');
-  if(op !== -1 && cl !== -1 && cl > op){
-    fromCoord = rest.substring(op + 1, cl).trim();
-  }
+  var mCoord = rest.match(/\(([1-9]{2})\)/);
+  if(mCoord) fromCoord = mCoord[1];
 
-  // 指し手コア文字列（空白を全削除）
-  var moveCore = rest.split('(')[0].replace(/[\u00A0\u3000\s]+/g, '');
+  var moveCore = rest.replace(/\([^\)]*\)/g, '').replace(/[\u00A0\u3000\s]+/g, '');
   var tx0 = 0, ty0 = 0, from = null;
 
   if(moveCore.indexOf("同") === 0){
@@ -194,7 +190,7 @@ function parseFullKif(tx){
   var ls = tx.split(/\r?\n/);
   var blocks = [], cur = {startPly: 1, lines: [], name: "本譜"};
   for(var i = 0; i < ls.length; i++){
-    var l = ls[i].replace(/[\u00A0\u3000\s]+/g, ' ').trim();
+    var l = ls[i].trim();
     if(!l || l.indexOf("*") === 0) continue;
     var bMatch = l.match(/^変化：(\d+)手/);
     if(bMatch){
@@ -202,15 +198,18 @@ function parseFullKif(tx){
       cur = {startPly: parseInt(bMatch[1], 10), lines: [], name: "変化：" + bMatch[1] + "手"};
       continue;
     }
-    if(/^\d+\s+/.test(l)) cur.lines.push(l);
+    if(/^\s*\d+\s+/.test(l)) cur.lines.push(l);
   }
   if(cur.lines.length) blocks.push(cur);
   if(!blocks.length) return [];
 
+  // 各ブロックの解析
   for(var b = 0; b < blocks.length; b++){
     var blk = blocks[b];
     blk.moves = [];
     var px = 0, py = 0;
+
+    // 分岐の場合は、本譜の合流直前手のマスを引き継ぐ
     if(blk.startPly > 1 && blocks[0].moves){
       for(var k = 0; k < blocks[0].moves.length; k++){
         if(blocks[0].moves[k].ply === blk.startPly - 1){
@@ -218,6 +217,7 @@ function parseFullKif(tx){
         }
       }
     }
+
     for(var j = 0; j < blk.lines.length; j++){
       var pm = parseLineMove(blk.lines[j], px, py);
       if(pm){
@@ -229,20 +229,34 @@ function parseFullKif(tx){
   return blocks;
 }
 
+// 手順を結合し、着手マスと「同」の行き先を完全に再同期する
 function buildSequenceFromBlock(blockIndex){
   if(!parsedTree.length) return;
   currentBlockIndex = blockIndex;
   var target = parsedTree[blockIndex];
-  var seq = [];
+  var rawLines = [];
+
   if(target.startPly === 1){
-    seq = target.moves.slice();
+    rawLines = target.lines.slice();
   } else {
-    var mainMoves = parsedTree[0].moves;
-    for(var i = 0; i < mainMoves.length; i++){
-      if(mainMoves[i].ply < target.startPly) seq.push(mainMoves[i]);
-      else break;
+    var mainLines = parsedTree[0].lines;
+    for(var i = 0; i < mainLines.length; i++){
+      var clean = mainLines[i].replace(/[\u00A0\u3000\s]+/g, ' ').trim();
+      var ply = parseInt(clean.split(' ')[0], 10);
+      if(ply < target.startPly){
+        rawLines.push(mainLines[i]);
+      } else break;
     }
-    seq = seq.concat(target.moves);
+    rawLines = rawLines.concat(target.lines);
+  }
+
+  var seq = [], px = 0, py = 0;
+  for(var j = 0; j < rawLines.length; j++){
+    var pm = parseLineMove(rawLines[j], px, py);
+    if(pm){
+      px = pm.tx; py = pm.ty;
+      seq.push(pm);
+    }
   }
   applyMoveSequence(seq);
 }
