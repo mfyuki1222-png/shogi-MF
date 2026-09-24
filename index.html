@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.9.2</title>
+<title>定跡チェッカー ver.1.9</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -21,7 +21,7 @@ h2{font-size:1rem;margin:2px;display:flex;align-items:center;justify-content:cen
 
 @media (min-width: 720px) {
   .memo-pc { display:block; }
-  .btn-memo-m { display:none; } /* PCではスマホ用ボタンを隠す */
+  .btn-memo-m { display:none; }
 }
 
 #sb{display:none;font-size:.85rem;font-weight:bold;margin:2px auto;max-width:390px;justify-content:space-between;padding:2px 8px;background:#e0e7ed;border-radius:4px;}
@@ -64,7 +64,6 @@ td.w-cell{background:#ffcdd2!important;}
 <div id="d-ovl">📂 棋譜ファイルをドロップして登録</div>
 
 <div class="layout-wrapper">
-  <!-- メインアプリ部分 -->
   <div id="app-main">
     <h2><span>定跡チェッカー</span><span class="ver-badge">ver.1.9</span></h2>
     <div class="pbar">
@@ -102,18 +101,15 @@ td.w-cell{background:#ffcdd2!important;}
     </div>
   </div>
 
-  <!-- PC用 メモエリア (右側) -->
   <div id="memo-pc" class="memo-pc">
     <div style="font-weight:bold;margin-bottom:6px;color:#333;font-size:14px;">📝 メモ <span id="memo-kif-name-pc" style="font-weight:normal;color:#666;font-size:11px;"></span></div>
     <textarea id="memo-ta-pc" oninput="syncMemo(this, 'memo-ta-m')" placeholder="この棋譜のポイントや注意点などを自由にメモできます..."></textarea>
   </div>
 </div>
 
-<!-- モーダル群 -->
 <div id="modal" class="modal"><div class="mbox"><b>タイトル</b><input id="kt" placeholder="相掛かり"><b>KIFテキスト</b><textarea id="kx"></textarea><div style="text-align:right;"><button class="btn" style="background:#888;" onclick="cM('modal')">閉じる</button> <button class="btn" onclick="sApp()">保存</button></div></div></div>
 <div id="smodal" class="modal"><div class="mbox"><b>同期データ</b><textarea id="sx"></textarea><div style="display:flex;justify-content:space-between;margin-top:4px;"><button class="btn" style="background:#888;" onclick="cM('smodal')">閉じる</button><div><button class="btn" style="background:#0288d1;" onclick="cSync()">コピー</button> <button class="btn" onclick="aSync()">反映</button></div></div></div></div>
 
-<!-- スマホ用 メモモーダル -->
 <div id="mmodal" class="modal">
   <div class="mbox" style="max-width:380px;">
     <b style="display:block;margin-bottom:6px;font-size:14px;">📝 メモ <span id="memo-kif-name-m" style="font-weight:normal;color:#666;font-size:11px;"></span></b>
@@ -133,7 +129,7 @@ td.w-cell{background:#ffcdd2!important;}
 </div>
 
 <script>
-var skifs={},parsedTree=[],currentKifName="",currentBlockIndex=0,bk=[],rawMoves=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[];
+var skifs={},parsedTree=[],currentKifName="",currentBlockIndex=0,rawMoves=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[];
 var cm={'１':1,'２':2,'３':3,'４':4,'５':5,'６':6,'７':7,'８':8,'９':9,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
 var zn=["","１","２","３","４","５","６","７","８","９"],kn=["","一","二","三","四","五","六","七","八","九"];
 var unp={"と":"歩","成香":"香","成桂":"桂","成銀":"銀","馬":"角","竜":"飛","龍":"飛"};
@@ -142,7 +138,6 @@ var cCnt=0,hFail=false,isR=false,rTurn=0,rLines=[];
 var branchStats={};
 try{var stData=localStorage.getItem("skifs_bstat");if(stData)branchStats=JSON.parse(stData);}catch(e){}
 
-// メモデータの読み込み
 var kifMemos={};
 try{var md=localStorage.getItem("skifs_memos");if(md)kifMemos=JSON.parse(md);}catch(e){}
 
@@ -166,7 +161,6 @@ function oM(id){document.getElementById(id).style.display="flex";}
 function cM(id){document.getElementById(id).style.display="none";}
 function closeBSheet(){document.getElementById("bsheet").style.display="none";}
 
-// PC・スマホ間でのメモ同期と保存
 function syncMemo(srcElement, targetId){
   var val = srcElement.value;
   if(!currentKifName) return;
@@ -206,7 +200,7 @@ function swKif(){
   if(k&&skifs[k]){
     lB(skifs[k], k);
   }else{
-    parsedTree=[];bk=[];rawMoves=[];
+    parsedTree=[];rawMoves=[];
     currentKifName="";
     document.getElementById("memo-ta-pc").value="";
     document.getElementById("memo-ta-m").value="";
@@ -227,7 +221,7 @@ function delKif(){
   if(rk.length){
     lB(skifs[rk[0]], rk[0]);
   }else{
-    parsedTree=[];bk=[];rawMoves=[];
+    parsedTree=[];rawMoves=[];
     currentKifName="";
     document.getElementById("memo-ta-pc").value="";
     document.getElementById("memo-ta-m").value="";
@@ -328,19 +322,6 @@ function buildSequenceFromBlock(blockIndex){
   if(!parsedTree.length) return;
   currentBlockIndex = blockIndex;
   rawMoves = getFullSequenceForBlock(blockIndex);
-
-  bk = [];
-  for(var k = 0; k < rawMoves.length; k++){
-    var it = rawMoves[k];
-    if(it.ply % 2 === 1){
-      var nx = rawMoves[k + 1], has = nx && (nx.ply === it.ply + 1);
-      bk.push({
-        ply: it.ply, from: it.from, to: it.to, name: "▲" + it.name,
-        rFrom: has ? nx.from : null, rTo: has ? nx.to : null, rName: has ? "△" + nx.name : "終了"
-      });
-      if(has) k++;
-    }
-  }
 }
 
 function lB(tx, kName){
@@ -354,16 +335,19 @@ function lB(tx, kName){
     document.getElementById("memo-kif-name-pc").innerText = mTitle;
   }
   parsedTree = parseFullKif(tx);
-  if(!parsedTree.length){parsedTree = []; bk = []; rawMoves = []; rG(); return;}
+  if(!parsedTree.length){parsedTree = []; rawMoves = []; rG(); return;}
   buildSequenceFromBlock(0);
   rG();
 }
 
 function getBranchesAt(ply){
   var branches = [];
-  if(!rawMoves || rawMoves.length < ply) return [];
+  var curMove = null;
+  for(var i = 0; i < rawMoves.length; i++){
+    if(rawMoves[i].ply === ply) { curMove = rawMoves[i]; break; }
+  }
+  if(!curMove) return [];
 
-  var curMove = rawMoves[ply - 1];
   branches.push({
     index: currentBlockIndex,
     name: parsedTree[currentBlockIndex] ? parsedTree[currentBlockIndex].name : "本譜",
@@ -377,17 +361,26 @@ function getBranchesAt(ply){
     
     if(b.startPly === ply){
       var bSeq = getFullSequenceForBlock(i);
-      if(bSeq.length >= ply){
+      var candMove = null;
+      for(var j = 0; j < bSeq.length; j++){
+        if(bSeq[j].ply === ply) { candMove = bSeq[j]; break; }
+      }
+      if(candMove){
         var isIdenticalHistory = true;
-        for(var step = 0; step < ply - 1; step++){
-          if(bSeq[step].from !== rawMoves[step].from || bSeq[step].to !== rawMoves[step].to){
+        for(var step = 0; step < rawMoves.length; step++){
+          var rm = rawMoves[step];
+          if(rm.ply >= ply) break;
+          var bm = null;
+          for(var k = 0; k < bSeq.length; k++){
+            if(bSeq[k].ply === rm.ply) { bm = bSeq[k]; break; }
+          }
+          if(!bm || bm.from !== rm.from || bm.to !== rm.to){
             isIdenticalHistory = false;
             break;
           }
         }
 
         if(isIdenticalHistory){
-          var candMove = bSeq[ply - 1];
           branches.push({
             index: i,
             name: b.name,
@@ -424,8 +417,8 @@ function showBranchSheet(branches, currentPly){
       btn.onclick = function(){
         closeBSheet();
         buildSequenceFromBlock(b.index);
-        var targetPly = (currentPly % 2 === 1) ? (currentPly - 1) : currentPly;
-        jumpToExactPly(targetPly);
+        var targetPly = currentPly - 1;
+        jumpToExactPly(targetPly, true); // skipBranch = true
       };
       list.appendChild(btn);
     })(branches[i]);
@@ -435,7 +428,7 @@ function showBranchSheet(branches, currentPly){
 
 function showBranchModalManual(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
-  var currentPly = (st * 2) + 1;
+  var currentPly = st + 1;
   var bAt = getBranchesAt(currentPly);
   if(bAt.length){
     showBranchSheet(bAt, currentPly);
@@ -463,8 +456,7 @@ function showAllBranchesModal(){
         closeBSheet();
         buildSequenceFromBlock(idx);
         var targetPly = b.startPly > 1 ? (b.startPly - 1) : 0;
-        if(targetPly % 2 !== 0) targetPly++;
-        jumpToExactPly(targetPly);
+        jumpToExactPly(targetPly, true); // skipBranch = true
       };
       list.appendChild(btn);
     })(i);
@@ -481,24 +473,27 @@ function initB(){
 }
 function uScr(){
   var el = document.getElementById("sb");
-  if(isR || !bk || !bk.length){el.style.display = "none"; return;}
+  if(isR || !rawMoves || !rawMoves.length){el.style.display = "none"; return;}
   el.style.display = "flex";
-  var currentPly = st * 2;
+  var currentPly = st;
   var totalPly = rawMoves.length;
-  var rt = st === 0 ? 100 : Math.round((cCnt / st) * 100);
+  var playedSentePly = Math.ceil(currentPly / 2);
+  var rt = playedSentePly === 0 ? 100 : Math.round((cCnt / playedSentePly) * 100);
   var curBName = parsedTree[currentBlockIndex] ? parsedTree[currentBlockIndex].name : "本譜";
-  el.innerHTML = '<span>[' + curBName + '] ' + currentPly + '/' + totalPly + '手</span><span>正答率: ' + rt + '% (' + cCnt + '/' + st + ')</span>';
+  el.innerHTML = '<span>[' + curBName + '] ' + currentPly + '/' + totalPly + '手</span><span>正答率: ' + rt + '% (' + cCnt + '/' + playedSentePly + ')</span>';
 }
 function svH(){hst.push({b: JSON.parse(JSON.stringify(bS)), sh: JSON.parse(JSON.stringify(sHnd)), gh: JSON.parse(JSON.stringify(gHnd)), st: st, tx: document.getElementById("st").innerHTML, rt: rTurn, rl: rLines.slice(), cc: cCnt, hf: hFail});}
 function uM(){if(isA || !hst.length) return; closeBSheet(); var p = hst.pop(); bS = p.b; sHnd = p.sh; gHnd = p.gh; st = p.st; sF = null; hI = null; cCnt = p.cc; hFail = p.hf; if(isR){rTurn = p.rt; rLines = p.rl; uRSt();} else {document.getElementById("st").innerHTML = p.tx; uScr();} renderBoard();}
 
-function jumpToExactPly(playCount){
+function jumpToExactPly(playCount, skipBranch){
   closeBSheet();
   initB();
-  for(var i = 0; i < playCount; i++){
-    if(i >= rawMoves.length) break;
+  
+  for(var i = 0; i < rawMoves.length; i++){
     var m = rawMoves[i];
-    var isG = (i % 2 === 1);
+    if(m.ply > playCount) break;
+    var isG = (m.ply % 2 === 0);
+
     var isD = (m.from.indexOf("h_") === 0);
     var ptName = isD ? m.from.replace("h_", "") : (bS[m.from] ? bS[m.from].t : "歩");
 
@@ -521,30 +516,41 @@ function jumpToExactPly(playCount){
     bS[m.to] = {t: ptName, g: isG ? 1 : 0};
   }
 
-  st = Math.floor(playCount / 2);
+  st = playCount;
   sF = null; hI = null; isA = false; hst = []; cCnt = 0; hFail = false;
+  
   var el = document.getElementById("st");
-  if(st < bk.length) el.innerHTML = '<span style="color:#2e7d32;">▶ ' + (st * 2) + '手目局面（▲' + bk[st].name + '）</span>';
-  else el.innerText = "最終手まで進みました";
+  if(st < rawMoves.length) {
+    var nextExp = rawMoves[st];
+    var turnStr = (nextExp.ply % 2 === 1) ? "▲" : "△";
+    el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextExp.ply + '手目局面（' + turnStr + nextExp.name + '）</span>';
+  } else {
+    el.innerText = "最終手まで進みました";
+  }
   uScr(); renderBoard();
 
   var nextPly = playCount + 1;
-  var branches = getBranchesAt(nextPly);
+  var branches = skipBranch ? [] : getBranchesAt(nextPly);
+  
   if(branches.length >= 2){
     showBranchSheet(branches, nextPly);
+  } else {
+    // 相手番(後手番)なら自動で指す
+    if(st < rawMoves.length && st % 2 === 1) {
+       isA = true;
+       setTimeout(autoPlayGote, 400);
+    }
   }
 }
 
 function jumpToPly(){
   if(!rawMoves.length){alert("棋譜が読み込まれていません");return;}
   var maxPly = rawMoves.length;
-  var input = prompt("何手目まで進めて練習しますか？ (0〜" + maxPly + "手目):", (st * 2).toString());
+  var input = prompt("何手目まで進めて練習しますか？ (0〜" + maxPly + "手目):", st.toString());
   if(input === null) return;
   var target = parseInt(input, 10);
   if(isNaN(target) || target < 0 || target > maxPly){alert("0から" + maxPly + "の数値を入力してください");return;}
-  var playCount = target;
-  if(playCount % 2 !== 0) playCount--;
-  jumpToExactPly(playCount);
+  jumpToExactPly(target, false);
 }
 
 function renderBoard(wK){
@@ -599,16 +605,66 @@ function anim(fk, tk, tx, isG, cb){
   setTimeout(function(){if(fl.parentNode) fl.parentNode.removeChild(fl); cb();}, 190);
 }
 
+function autoPlayGote() {
+  if (st >= rawMoves.length) {
+    isA = false;
+    return;
+  }
+  var exp = rawMoves[st];
+  var isDrop = (exp.from.indexOf("h_") === 0);
+  var pt = isDrop ? exp.from.replace("h_", "") : (bS[exp.from] ? bS[exp.from].t : "桂");
+
+  if(!isDrop && exp.name.indexOf("成") !== -1 && pt.indexOf("成") === -1){
+    if(pt === "角") pt = "馬"; else if(pt === "飛") pt = "竜"; else if(pt === "歩") pt = "と";
+    else if(pt === "銀") pt = "成銀"; else if(pt === "桂") pt = "成桂"; else if(pt === "香") pt = "成香";
+  }
+
+  if(!isDrop && bS[exp.from]) delete bS[exp.from];
+  renderBoard();
+
+  anim(exp.from, exp.to, pt, 1, function(){
+    if(bS[exp.to]){
+      var rCap = unp[bS[exp.to].t] || bS[exp.to].t;
+      gHnd[rCap] = (gHnd[rCap] || 0) + 1;
+    }
+    if(isDrop) gHnd[pt]--;
+    bS[exp.to] = {t: pt, g: 1};
+    
+    var el = document.getElementById("st");
+    el.innerHTML += " 相手: △" + exp.name;
+    
+    st++;
+    uScr();
+    renderBoard();
+
+    var nextPly = st + 1;
+    var branches = getBranchesAt(nextPly);
+    if(branches.length >= 2){
+      setTimeout(function(){showBranchSheet(branches, nextPly);}, 250);
+    } else {
+      if (st < rawMoves.length) {
+        var nextExp = rawMoves[st];
+        el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextExp.ply + '手目局面（▲' + nextExp.name + '）</span>';
+      } else {
+        var fr = Math.round((cCnt / Math.ceil(rawMoves.length / 2)) * 100);
+        el.innerHTML = '<span style="color:#1b5e20;"> ◯ 完了！ 正答率: ' + fr + '%</span>';
+      }
+      isA = false;
+    }
+  });
+}
+
 function onC(x, y){
   if(isA) return; var k = x + "," + y; if(isR){hRec(x, y, k); return;}
   var el = document.getElementById("st"); hI = null;
-  if(!bk.length){el.innerText = "棋譜を登録または選択してください"; return;}
+  if(!rawMoves.length){el.innerText = "棋譜を登録または選択してください"; return;}
   if(!sF){if(bS[k] && !bS[k].g){closeBSheet(); sF = k; renderBoard();} return;}
   if(sF === k){sF = null; renderBoard(); return;}
   if(bS[k] && !bS[k].g){closeBSheet(); sF = k; renderBoard(); return;}
 
-  var from = sF, to = k; sF = null; if(st >= bk.length) return;
-  var exp = bk[st];
+  var from = sF, to = k; sF = null; if(st >= rawMoves.length) return;
+  
+  var exp = rawMoves[st];
   var isDrop = (from.indexOf("h_") === 0);
   var pt = isDrop ? from.replace("h_", "") : bS[from].t;
 
@@ -622,7 +678,7 @@ function onC(x, y){
     svH(); isA = true;
     closeBSheet();
     if(!hFail){
-      cCnt++;
+      cCnt++; 
       saveBranchStat(currentKifName, curBName, true);
     }
 
@@ -642,57 +698,26 @@ function onC(x, y){
       bS[to] = {t: pt, g: 0};
       st++; hFail = false; uScr(); renderBoard();
 
-      var nextGotePly = (st - 1) * 2 + 2; 
-      var goteBranches = getBranchesAt(nextGotePly);
+      var nextPly = st + 1; 
+      var branches = getBranchesAt(nextPly);
 
-      if(goteBranches.length >= 2){
+      if(branches.length >= 2){
         el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span> - 相手の応手を選択';
         isA = false;
-        setTimeout(function(){showBranchSheet(goteBranches, nextGotePly);}, 250);
+        setTimeout(function(){showBranchSheet(branches, nextPly);}, 250);
       } else {
-        if(exp.rFrom && exp.rTo){
+        if(st < rawMoves.length){
           el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span>';
-          setTimeout(function(){
-            var isRDrop = (exp.rFrom.indexOf("h_") === 0);
-            var rpt = isRDrop ? exp.rFrom.replace("h_", "") : (bS[exp.rFrom] ? bS[exp.rFrom].t : "桂");
-
-            if(!isRDrop && exp.rName.indexOf("成") !== -1 && rpt.indexOf("成") === -1){
-              if(rpt === "角") rpt = "馬"; else if(rpt === "飛") rpt = "竜"; else if(rpt === "歩") rpt = "と";
-              else if(rpt === "銀") rpt = "成銀"; else if(rpt === "桂") rpt = "成桂"; else if(rpt === "香") rpt = "成香";
-            }
-
-            if(!isRDrop && bS[exp.rFrom]) delete bS[exp.rFrom];
-            renderBoard();
-
-            anim(exp.rFrom, exp.rTo, rpt, 1, function(){
-              if(bS[exp.rTo]){
-                var rCap = unp[bS[exp.rTo].t] || bS[exp.rTo].t;
-                gHnd[rCap] = (gHnd[rCap] || 0) + 1;
-              }
-              if(isRDrop) gHnd[rpt]--;
-              bS[exp.rTo] = {t: rpt, g: 1};
-              el.innerHTML += " 相手: " + exp.rName;
-              isA = false;
-              renderBoard();
-
-              var nextSentePly = (st * 2) + 1;
-              var senteBranches = getBranchesAt(nextSentePly);
-              if(senteBranches.length >= 2){
-                setTimeout(function(){showBranchSheet(senteBranches, nextSentePly);}, 250);
-              }
-            });
-          }, 220);
+          setTimeout(autoPlayGote, 220);
         } else {
-          var fr = Math.round((cCnt / bk.length) * 100);
+          var fr = Math.round((cCnt / Math.ceil(rawMoves.length / 2)) * 100);
           el.innerHTML = '<span style="color:#1b5e20;">◯ 完了！ 正答率: ' + fr + '%</span>';
           isA = false;
         }
       }
     });
   } else {
-    if(!hFail){
-      saveBranchStat(currentKifName, curBName, false);
-    }
+    if(!hFail){ saveBranchStat(currentKifName, curBName, false); }
     hFail = true; isA = true; var op = isDrop ? null : bS[from]; if(!isDrop) delete bS[from]; renderBoard();
     anim(from, to, pt, 0, function(){
       el.innerHTML = '<span style="color:#c62828;">× 定跡外れ！</span>'; renderBoard(to);
@@ -733,12 +758,23 @@ function hRec(x, y, k){
   }
 }
 function fRec(){if(!rLines.length){alert("手がありません");return;}var t = prompt("定跡名を入力:", "新定跡_" + (new Date().getMonth() + 1) + "月" + new Date().getDate() + "日");if(!t)return;regK(t, rLines.join("\n"));eRec();}
-function sH(){if(!bk.length || st >= bk.length || isA) return; hFail = true; hI = {from: bk[st].from, to: bk[st].to}; document.getElementById("st").innerHTML = '<span style="color:#0277bd;">💡 正解: 【' + bk[st].name + '】</span>'; renderBoard();}
+function sH(){
+  if(!rawMoves.length || st >= rawMoves.length || isA) return; 
+  hFail = true; 
+  hI = {from: rawMoves[st].from, to: rawMoves[st].to}; 
+  var turnStr = (rawMoves[st].ply % 2 === 1) ? "▲" : "△";
+  document.getElementById("st").innerHTML = '<span style="color:#0277bd;">💡 正解: 【' + turnStr + rawMoves[st].name + '】</span>'; 
+  renderBoard();
+}
 function rG(){
   closeBSheet(); st = 0; sF = null; hI = null; isA = false; hst = []; cCnt = 0; hFail = false;
   var el = document.getElementById("st");
-  if(bk.length) el.innerText = "初手を指してください（" + bk[0].name + "）";
-  else el.innerText = "棋譜を登録または選択してください";
+  if(rawMoves.length) {
+    var nextMove = rawMoves[0];
+    el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextMove.ply + '手目局面（▲' + nextMove.name + '）</span>';
+  } else {
+    el.innerText = "棋譜を登録または選択してください";
+  }
   initB(); uScr(); renderBoard();
 }
 function oSync(){
@@ -761,7 +797,7 @@ function aSync(){
     var rk = Object.keys(skifs);
     uD(rk.length ? rk[0] : "");
     if(rk.length) lB(skifs[rk[0]], rk[0]);
-    else {parsedTree = []; bk = []; rawMoves = []; rG();}
+    else {parsedTree = []; rawMoves = []; rG();}
     cM("smodal");
     alert("同期完了");
   }catch(e){
@@ -786,7 +822,7 @@ if(skifs && skifs["エルモ囲い（基本形）"]){
 var ks = Object.keys(skifs);
 uD(ks.length ? ks[0] : "");
 if(ks.length) lB(skifs[ks[0]], ks[0]);
-else {bk = []; rawMoves = []; rG();}
+else {rawMoves = []; rG();}
 </script>
 </body>
 </html>
