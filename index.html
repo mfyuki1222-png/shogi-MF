@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.9</title>
+<title>定跡チェッカー ver.1.91</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -176,7 +176,7 @@ function sApp(){
 }
 function regK(t,tx){
   var tr=parseFullKif(tx);
-  if(!tr.length || !tr[0].lines.length){alert("認識失敗");return;}
+  if(!tr.length || !tr[0].fullSeq.length){alert("認識失敗");return;}
   skifs[t]=tx;
   try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}
   uD(t);lB(tx, t);
@@ -275,47 +275,55 @@ function parseFullKif(tx){
     if(!l || l.indexOf("*") === 0) continue;
     var bMatch = l.match(/^変化：(\d+)手/);
     if(bMatch){
-      if(cur.lines.length) blocks.push(cur);
+      if(cur.lines.length || cur.name === "本譜") blocks.push(cur);
       cur = {startPly: parseInt(bMatch[1], 10), lines: [], name: "変化：" + bMatch[1] + "手"};
       continue;
     }
     if(/^\s*\d+\s+/.test(l)) cur.lines.push(l);
   }
-  if(cur.lines.length) blocks.push(cur);
+  if(cur.lines.length || cur.name === "本譜") blocks.push(cur);
+
+  for(var i = 0; i < blocks.length; i++){
+     var b = blocks[i];
+     var seq = [];
+     var px = 0, py = 0;
+     
+     if (i === 0) {
+        for(var j = 0; j < b.lines.length; j++){
+           var pm = parseLineMove(b.lines[j], px, py);
+           if(pm) { px = pm.tx; py = pm.ty; seq.push(pm); }
+        }
+     } else {
+        var parentSeq = null;
+        for(var j = i - 1; j >= 0; j--){
+           if(blocks[j].fullSeq && blocks[j].fullSeq.length >= b.startPly - 1){
+              parentSeq = blocks[j].fullSeq;
+              break;
+           }
+        }
+        if(!parentSeq) parentSeq = blocks[0].fullSeq || [];
+        
+        seq = parentSeq.slice(0, b.startPly - 1);
+        if(seq.length > 0){
+           px = seq[seq.length - 1].tx;
+           py = seq[seq.length - 1].ty;
+        }
+        
+        for(var j = 0; j < b.lines.length; j++){
+           var pm = parseLineMove(b.lines[j], px, py);
+           if(pm) { px = pm.tx; py = pm.ty; seq.push(pm); }
+        }
+     }
+     b.fullSeq = seq;
+  }
+  
   return blocks;
 }
 
 function getFullSequenceForBlock(blockIndex){
   var target = parsedTree[blockIndex];
   if(!target) return [];
-
-  if(target.startPly === 1 || blockIndex === 0){
-    var seq0 = [], px0 = 0, py0 = 0;
-    for(var j = 0; j < target.lines.length; j++){
-      var pm = parseLineMove(target.lines[j], px0, py0);
-      if(pm){ px0 = pm.tx; py0 = pm.ty; seq0.push(pm); }
-    }
-    return seq0;
-  }
-
-  var mainTarget = parsedTree[0];
-  var mainSeq = [];
-  var mPx = 0, mPy = 0;
-  for(var m = 0; m < mainTarget.lines.length; m++){
-    var mPm = parseLineMove(mainTarget.lines[m], mPx, mPy);
-    if(mPm){ mPx = mPm.tx; mPy = mPm.ty; mainSeq.push(mPm); }
-  }
-
-  var parentSeq = mainSeq.slice(0, target.startPly - 1);
-  var px = parentSeq.length ? parentSeq[parentSeq.length - 1].tx : 0;
-  var py = parentSeq.length ? parentSeq[parentSeq.length - 1].ty : 0;
-  var fullSeq = parentSeq.slice();
-
-  for(var k = 0; k < target.lines.length; k++){
-    var pm2 = parseLineMove(target.lines[k], px, py);
-    if(pm2){ px = pm2.tx; py = pm2.ty; fullSeq.push(pm2); }
-  }
-  return fullSeq;
+  return target.fullSeq || []; 
 }
 
 function buildSequenceFromBlock(blockIndex){
@@ -367,6 +375,7 @@ function getBranchesAt(ply){
       }
       if(candMove){
         var isIdenticalHistory = true;
+        // 過去の手順が完全に同一か（座標だけでなく指し手の文字列・成り・打も含む）を厳格にチェック
         for(var step = 0; step < rawMoves.length; step++){
           var rm = rawMoves[step];
           if(rm.ply >= ply) break;
@@ -374,7 +383,7 @@ function getBranchesAt(ply){
           for(var k = 0; k < bSeq.length; k++){
             if(bSeq[k].ply === rm.ply) { bm = bSeq[k]; break; }
           }
-          if(!bm || bm.from !== rm.from || bm.to !== rm.to){
+          if(!bm || bm.from !== rm.from || bm.to !== rm.to || bm.name !== rm.name){
             isIdenticalHistory = false;
             break;
           }
@@ -418,7 +427,7 @@ function showBranchSheet(branches, currentPly){
         closeBSheet();
         buildSequenceFromBlock(b.index);
         var targetPly = currentPly - 1;
-        jumpToExactPly(targetPly, true); // skipBranch = true
+        jumpToExactPly(targetPly, true);
       };
       list.appendChild(btn);
     })(branches[i]);
@@ -456,7 +465,7 @@ function showAllBranchesModal(){
         closeBSheet();
         buildSequenceFromBlock(idx);
         var targetPly = b.startPly > 1 ? (b.startPly - 1) : 0;
-        jumpToExactPly(targetPly, true); // skipBranch = true
+        jumpToExactPly(targetPly, true); 
       };
       list.appendChild(btn);
     })(i);
@@ -497,7 +506,7 @@ function jumpToExactPly(playCount, skipBranch){
     var isD = (m.from.indexOf("h_") === 0);
     var ptName = isD ? m.from.replace("h_", "") : (bS[m.from] ? bS[m.from].t : "歩");
 
-    if(!isD && m.name.indexOf("成") !== -1 && ptName.indexOf("成") === -1){
+    if(!isD && m.name.indexOf("成") !== -1 && m.name.indexOf("不成") === -1 && ptName.indexOf("成") === -1){
       if(ptName === "角") ptName = "馬"; else if(ptName === "飛") ptName = "竜"; else if(ptName === "歩") ptName = "と";
       else if(ptName === "銀") ptName = "成銀"; else if(ptName === "桂") ptName = "成桂"; else if(ptName === "香") ptName = "成香";
     }
@@ -535,7 +544,6 @@ function jumpToExactPly(playCount, skipBranch){
   if(branches.length >= 2){
     showBranchSheet(branches, nextPly);
   } else {
-    // 相手番(後手番)なら自動で指す
     if(st < rawMoves.length && st % 2 === 1) {
        isA = true;
        setTimeout(autoPlayGote, 400);
@@ -614,7 +622,7 @@ function autoPlayGote() {
   var isDrop = (exp.from.indexOf("h_") === 0);
   var pt = isDrop ? exp.from.replace("h_", "") : (bS[exp.from] ? bS[exp.from].t : "桂");
 
-  if(!isDrop && exp.name.indexOf("成") !== -1 && pt.indexOf("成") === -1){
+  if(!isDrop && exp.name.indexOf("成") !== -1 && exp.name.indexOf("不成") === -1 && pt.indexOf("成") === -1){
     if(pt === "角") pt = "馬"; else if(pt === "飛") pt = "竜"; else if(pt === "歩") pt = "と";
     else if(pt === "銀") pt = "成銀"; else if(pt === "桂") pt = "成桂"; else if(pt === "香") pt = "成香";
   }
@@ -682,7 +690,7 @@ function onC(x, y){
       saveBranchStat(currentKifName, curBName, true);
     }
 
-    if(!isDrop && exp.name.indexOf("成") !== -1 && pt.indexOf("成") === -1){
+    if(!isDrop && exp.name.indexOf("成") !== -1 && exp.name.indexOf("不成") === -1 && pt.indexOf("成") === -1){
       if(pt === "角") pt = "馬"; else if(pt === "飛") pt = "竜"; else if(pt === "歩") pt = "と";
       else if(pt === "銀") pt = "成銀"; else if(pt === "桂") pt = "成桂"; else if(pt === "香") pt = "成香";
     }
