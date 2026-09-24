@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.92</title>
+<title>定跡チェッカー ver.1.9</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -590,8 +590,7 @@ function jumpToExactPly(playCount, skipBranch){
        isA = true;
        setTimeout(autoPlayGote, 400);
     } else if (st < rawMoves.length && st % 2 === 0) {
-       var nextExp = rawMoves[st];
-       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextExp.ply + '手目局面（▲' + nextExp.name + '）</span>';
+       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>';
     } else {
        el.innerText = "最終手まで進みました";
     }
@@ -702,8 +701,7 @@ function autoPlayGote() {
       isA = false;
     } else {
       if (st < rawMoves.length) {
-        var nextExp = rawMoves[st];
-        el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextExp.ply + '手目局面（▲' + nextExp.name + '）</span>';
+        el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>';
       } else {
         var fr = Math.round((cCnt / Math.ceil(rawMoves.length / 2)) * 100);
         el.innerHTML = '<span style="color:#1b5e20;"> ◯ 完了！ 正答率: ' + fr + '%</span>';
@@ -856,8 +854,7 @@ function rG(){
     if(branches.length >= 2){
        showSenteBranchInfo(branches, nextPly);
     } else {
-       var nextMove = rawMoves[0];
-       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextMove.ply + '手目局面（▲' + nextMove.name + '）</span>';
+       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>';
     }
   } else {
     el.innerText = "棋譜を登録または選択してください";
