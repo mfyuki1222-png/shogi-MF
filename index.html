@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.91</title>
+<title>定跡チェッカー ver.1.92</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -103,7 +103,7 @@ td.w-cell{background:#ffcdd2!important;}
 
   <div id="memo-pc" class="memo-pc">
     <div style="font-weight:bold;margin-bottom:6px;color:#333;font-size:14px;">📝 メモ <span id="memo-kif-name-pc" style="font-weight:normal;color:#666;font-size:11px;"></span></div>
-    <textarea id="memo-ta-pc" oninput="syncMemo(this, 'memo-ta-m')" placeholder="この棋譜のポイントや注意点などを自由にメモできます..."></textarea>
+    <textarea id="memo-ta-pc" oninput="syncMemo(this, 'memo-ta-m')" placeholder="この局面のポイントや注意点などを自由にメモできます..."></textarea>
   </div>
 </div>
 
@@ -113,7 +113,7 @@ td.w-cell{background:#ffcdd2!important;}
 <div id="mmodal" class="modal">
   <div class="mbox" style="max-width:380px;">
     <b style="display:block;margin-bottom:6px;font-size:14px;">📝 メモ <span id="memo-kif-name-m" style="font-weight:normal;color:#666;font-size:11px;"></span></b>
-    <textarea id="memo-ta-m" oninput="syncMemo(this, 'memo-ta-pc')" placeholder="この棋譜のポイントや注意点などを自由にメモできます..." style="height:250px; font-size:13px;"></textarea>
+    <textarea id="memo-ta-m" oninput="syncMemo(this, 'memo-ta-pc')" placeholder="この局面のポイントや注意点などを自由にメモできます..." style="height:250px; font-size:13px;"></textarea>
     <div style="text-align:right;">
       <button class="btn" style="background:#888;" onclick="cM('mmodal')">閉じる</button>
     </div>
@@ -161,10 +161,44 @@ function oM(id){document.getElementById(id).style.display="flex";}
 function cM(id){document.getElementById(id).style.display="none";}
 function closeBSheet(){document.getElementById("bsheet").style.display="none";}
 
+// 動的に現在手数のメモを読み込んでUIに反映する関数
+function updateMemoUI() {
+  if (!currentKifName || !parsedTree[currentBlockIndex]) {
+     document.getElementById("memo-ta-pc").value = "";
+     document.getElementById("memo-ta-m").value = "";
+     document.getElementById("memo-kif-name-m").innerText = "";
+     document.getElementById("memo-kif-name-pc").innerText = "";
+     return;
+  }
+  var routeName = parsedTree[currentBlockIndex].name;
+  var nextPly = st + 1; // 次に指す手
+  var key = currentKifName + "::" + routeName + "::" + nextPly;
+  var mText = kifMemos[key];
+
+  // 新しいキーのメモが存在せず、旧仕様（棋譜単位）のメモが残っている場合はフォールバックとして読み込む
+  if (mText === undefined && kifMemos[currentKifName]) {
+     mText = kifMemos[currentKifName];
+  } else {
+     mText = mText || "";
+  }
+  
+  document.getElementById("memo-ta-pc").value = mText;
+  document.getElementById("memo-ta-m").value = mText;
+  
+  var mTitle = " (" + routeName + " " + nextPly + "手目)";
+  document.getElementById("memo-kif-name-m").innerText = mTitle;
+  document.getElementById("memo-kif-name-pc").innerText = mTitle;
+}
+
+// ユーザーがメモを編集した際に「ルート+手数」をキーにして保存
 function syncMemo(srcElement, targetId){
   var val = srcElement.value;
-  if(!currentKifName) return;
-  kifMemos[currentKifName] = val;
+  if(!currentKifName || !parsedTree[currentBlockIndex]) return;
+  var routeName = parsedTree[currentBlockIndex].name;
+  var nextPly = st + 1;
+  var key = currentKifName + "::" + routeName + "::" + nextPly;
+  
+  kifMemos[key] = val;
   document.getElementById(targetId).value = val;
   try{localStorage.setItem("skifs_memos", JSON.stringify(kifMemos));}catch(e){}
 }
@@ -202,10 +236,7 @@ function swKif(){
   }else{
     parsedTree=[];rawMoves=[];
     currentKifName="";
-    document.getElementById("memo-ta-pc").value="";
-    document.getElementById("memo-ta-m").value="";
-    document.getElementById("memo-kif-name-m").innerText="";
-    document.getElementById("memo-kif-name-pc").innerText="";
+    updateMemoUI();
     rG();
   }
 }
@@ -213,9 +244,7 @@ function delKif(){
   var s=document.getElementById("sel");
   if(!s.value||!confirm("「"+s.value+"」を削除しますか？"))return;
   delete skifs[s.value];
-  delete kifMemos[s.value];
   try{localStorage.setItem("skifs_min",JSON.stringify(skifs));}catch(e){}
-  try{localStorage.setItem("skifs_memos",JSON.stringify(kifMemos));}catch(e){}
   var rk=Object.keys(skifs);
   uD(rk.length?rk[0]:"");
   if(rk.length){
@@ -223,10 +252,7 @@ function delKif(){
   }else{
     parsedTree=[];rawMoves=[];
     currentKifName="";
-    document.getElementById("memo-ta-pc").value="";
-    document.getElementById("memo-ta-m").value="";
-    document.getElementById("memo-kif-name-m").innerText="";
-    document.getElementById("memo-kif-name-pc").innerText="";
+    updateMemoUI();
     rG();
   }
 }
@@ -335,12 +361,12 @@ function buildSequenceFromBlock(blockIndex){
 function lB(tx, kName){
   if(kName){
     currentKifName = kName;
-    var mText = kifMemos[currentKifName] || "";
-    document.getElementById("memo-ta-pc").value = mText;
-    document.getElementById("memo-ta-m").value = mText;
-    var mTitle = " (" + currentKifName + ")";
-    document.getElementById("memo-kif-name-m").innerText = mTitle;
-    document.getElementById("memo-kif-name-pc").innerText = mTitle;
+    // 旧メモが存在する場合の安全移行
+    if (kifMemos[currentKifName] !== undefined && typeof kifMemos[currentKifName] === "string") {
+       kifMemos[currentKifName + "::本譜::1"] = kifMemos[currentKifName];
+       delete kifMemos[currentKifName];
+       try{localStorage.setItem("skifs_memos", JSON.stringify(kifMemos));}catch(e){}
+    }
   }
   parsedTree = parseFullKif(tx);
   if(!parsedTree.length){parsedTree = []; rawMoves = []; rG(); return;}
@@ -375,7 +401,6 @@ function getBranchesAt(ply){
       }
       if(candMove){
         var isIdenticalHistory = true;
-        // 過去の手順が完全に同一か（座標だけでなく指し手の文字列・成り・打も含む）を厳格にチェック
         for(var step = 0; step < rawMoves.length; step++){
           var rm = rawMoves[step];
           if(rm.ply >= ply) break;
@@ -413,6 +438,24 @@ function getBranchesAt(ply){
   return branches;
 }
 
+// 先手番用の匿名化された分岐情報表示
+function showSenteBranchInfo(branches, currentPly){
+  var el = document.getElementById("st");
+  var text = '<span style="color:#d81b60;">🔀 この局面には分岐があります</span><br><span style="font-size:12px;font-weight:normal;color:#333;">';
+  var labels = ["A", "B", "C", "D", "E", "F", "G", "H"];
+  var infoArr = [];
+  for(var i=0; i<branches.length; i++) {
+      var b = branches[i];
+      var key = currentKifName + "::" + b.name;
+      var stat = branchStats[key] ? branchStats[key].total : 0;
+      var label = labels[i] || ("" + (i+1));
+      infoArr.push(label + "：" + stat + "回");
+  }
+  text += infoArr.join(" ／ ") + '</span>';
+  el.innerHTML = text;
+}
+
+// 後手番用の具体的な分岐選択（既存）
 function showBranchSheet(branches, currentPly){
   var list = document.getElementById("bs-list");
   list.innerHTML = "";
@@ -440,7 +483,11 @@ function showBranchModalManual(){
   var currentPly = st + 1;
   var bAt = getBranchesAt(currentPly);
   if(bAt.length){
-    showBranchSheet(bAt, currentPly);
+    if(currentPly % 2 === 1) {
+       showSenteBranchInfo(bAt, currentPly);
+    } else {
+       showBranchSheet(bAt, currentPly);
+    }
   } else {
     var el = document.getElementById("st");
     var prevHtml = el.innerHTML;
@@ -492,7 +539,7 @@ function uScr(){
   el.innerHTML = '<span>[' + curBName + '] ' + currentPly + '/' + totalPly + '手</span><span>正答率: ' + rt + '% (' + cCnt + '/' + playedSentePly + ')</span>';
 }
 function svH(){hst.push({b: JSON.parse(JSON.stringify(bS)), sh: JSON.parse(JSON.stringify(sHnd)), gh: JSON.parse(JSON.stringify(gHnd)), st: st, tx: document.getElementById("st").innerHTML, rt: rTurn, rl: rLines.slice(), cc: cCnt, hf: hFail});}
-function uM(){if(isA || !hst.length) return; closeBSheet(); var p = hst.pop(); bS = p.b; sHnd = p.sh; gHnd = p.gh; st = p.st; sF = null; hI = null; cCnt = p.cc; hFail = p.hf; if(isR){rTurn = p.rt; rLines = p.rl; uRSt();} else {document.getElementById("st").innerHTML = p.tx; uScr();} renderBoard();}
+function uM(){if(isA || !hst.length) return; closeBSheet(); var p = hst.pop(); bS = p.b; sHnd = p.sh; gHnd = p.gh; st = p.st; sF = null; hI = null; cCnt = p.cc; hFail = p.hf; if(isR){rTurn = p.rt; rLines = p.rl; uRSt();} else {document.getElementById("st").innerHTML = p.tx; uScr();} renderBoard(); updateMemoUI();}
 
 function jumpToExactPly(playCount, skipBranch){
   closeBSheet();
@@ -529,26 +576,28 @@ function jumpToExactPly(playCount, skipBranch){
   sF = null; hI = null; isA = false; hst = []; cCnt = 0; hFail = false;
   
   var el = document.getElementById("st");
-  if(st < rawMoves.length) {
-    var nextExp = rawMoves[st];
-    var turnStr = (nextExp.ply % 2 === 1) ? "▲" : "△";
-    el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextExp.ply + '手目局面（' + turnStr + nextExp.name + '）</span>';
-  } else {
-    el.innerText = "最終手まで進みました";
-  }
-  uScr(); renderBoard();
-
   var nextPly = playCount + 1;
   var branches = skipBranch ? [] : getBranchesAt(nextPly);
   
   if(branches.length >= 2){
-    showBranchSheet(branches, nextPly);
+    if(nextPly % 2 === 1){
+       showSenteBranchInfo(branches, nextPly);
+    } else {
+       showBranchSheet(branches, nextPly);
+    }
   } else {
     if(st < rawMoves.length && st % 2 === 1) {
        isA = true;
        setTimeout(autoPlayGote, 400);
+    } else if (st < rawMoves.length && st % 2 === 0) {
+       var nextExp = rawMoves[st];
+       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextExp.ply + '手目局面（▲' + nextExp.name + '）</span>';
+    } else {
+       el.innerText = "最終手まで進みました";
     }
   }
+  uScr(); renderBoard();
+  updateMemoUI();
 }
 
 function jumpToPly(){
@@ -644,11 +693,13 @@ function autoPlayGote() {
     st++;
     uScr();
     renderBoard();
+    updateMemoUI();
 
     var nextPly = st + 1;
     var branches = getBranchesAt(nextPly);
     if(branches.length >= 2){
-      setTimeout(function(){showBranchSheet(branches, nextPly);}, 250);
+      showSenteBranchInfo(branches, nextPly);
+      isA = false;
     } else {
       if (st < rawMoves.length) {
         var nextExp = rawMoves[st];
@@ -672,13 +723,31 @@ function onC(x, y){
 
   var from = sF, to = k; sF = null; if(st >= rawMoves.length) return;
   
-  var exp = rawMoves[st];
   var isDrop = (from.indexOf("h_") === 0);
   var pt = isDrop ? from.replace("h_", "") : bS[from].t;
 
   var isMatch = false;
-  if(isDrop) isMatch = (exp.from === "h_" + pt && exp.to === to);
-  else isMatch = (exp.from === from && exp.to === to);
+  var nextPly = st + 1;
+  var branches = getBranchesAt(nextPly);
+  var exp = rawMoves[st];
+
+  // 先手番で分岐がある場合、ユーザーの手がどのルートと一致するか自動判定してルートを切り替える
+  if (branches.length >= 2 && nextPly % 2 === 1) { 
+      for(var i=0; i<branches.length; i++) {
+          var testFrom = isDrop ? ("h_" + pt) : from;
+          if (branches[i].moveKey === (testFrom + "->" + to)) {
+              isMatch = true;
+              if (branches[i].index !== currentBlockIndex) {
+                  buildSequenceFromBlock(branches[i].index);
+                  exp = rawMoves[st]; 
+              }
+              break;
+          }
+      }
+  } else {
+      if(isDrop) isMatch = (exp.from === "h_" + pt && exp.to === to);
+      else isMatch = (exp.from === from && exp.to === to);
+  }
 
   var curBName = parsedTree[currentBlockIndex] ? parsedTree[currentBlockIndex].name : "本譜";
 
@@ -705,14 +774,15 @@ function onC(x, y){
       if(isDrop) sHnd[pt]--;
       bS[to] = {t: pt, g: 0};
       st++; hFail = false; uScr(); renderBoard();
+      updateMemoUI(); 
 
-      var nextPly = st + 1; 
-      var branches = getBranchesAt(nextPly);
+      var nextPly2 = st + 1; 
+      var branches2 = getBranchesAt(nextPly2);
 
-      if(branches.length >= 2){
+      if(branches2.length >= 2){
         el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span> - 相手の応手を選択';
         isA = false;
-        setTimeout(function(){showBranchSheet(branches, nextPly);}, 250);
+        setTimeout(function(){showBranchSheet(branches2, nextPly2);}, 250);
       } else {
         if(st < rawMoves.length){
           el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span>';
@@ -774,17 +844,27 @@ function sH(){
   document.getElementById("st").innerHTML = '<span style="color:#0277bd;">💡 正解: 【' + turnStr + rawMoves[st].name + '】</span>'; 
   renderBoard();
 }
+
 function rG(){
   closeBSheet(); st = 0; sF = null; hI = null; isA = false; hst = []; cCnt = 0; hFail = false;
+  initB(); uScr(); renderBoard(); 
+  
   var el = document.getElementById("st");
   if(rawMoves.length) {
-    var nextMove = rawMoves[0];
-    el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextMove.ply + '手目局面（▲' + nextMove.name + '）</span>';
+    var nextPly = 1;
+    var branches = getBranchesAt(nextPly);
+    if(branches.length >= 2){
+       showSenteBranchInfo(branches, nextPly);
+    } else {
+       var nextMove = rawMoves[0];
+       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextMove.ply + '手目局面（▲' + nextMove.name + '）</span>';
+    }
   } else {
     el.innerText = "棋譜を登録または選択してください";
   }
-  initB(); uScr(); renderBoard();
+  updateMemoUI();
 }
+
 function oSync(){
   try {
     var str = localStorage.getItem("skifs_min") || JSON.stringify(skifs);
