@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.1.9.1</title>
+<title>定跡チェッカー ver.1.9</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
@@ -146,6 +146,23 @@ try{var stData=localStorage.getItem("skifs_bstat");if(stData)branchStats=JSON.pa
 
 var kifMemos={};
 try{var md=localStorage.getItem("skifs_memos");if(md)kifMemos=JSON.parse(md);}catch(e){}
+
+function escapeHtml(str){
+  if(!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatKifCommentHtml(comment, prefixLabel){
+  if(!comment) return "";
+  var escaped = escapeHtml(comment).replace(/\r?\n/g, "<br>");
+  var prefix = prefixLabel ? ('<b>' + escapeHtml(prefixLabel) + '</b> ') : "";
+  return '<br><span style="display:inline-block;margin-top:2px;padding:2px 8px;background:#fff8e1;border-left:3px solid #ffa000;color:#4e342e;font-size:12px;font-weight:normal;text-align:left;border-radius:2px;">📝 ' + prefix + escaped + '</span>';
+}
 
 function saveBranchStat(kifName, bName, isCorrect){
   if(!kifName || !bName) return;
@@ -294,9 +311,22 @@ function parseLineMove(l, px, py){
   }
 
   if(tx0 && ty0 && from){
-    return {ply: ply, from: from, to: tx0 + "," + ty0, name: moveCore, tx: tx0, ty: ty0, rawLine: clean};
+    return {ply: ply, from: from, to: tx0 + "," + ty0, name: moveCore, tx: tx0, ty: ty0, rawLine: clean, comment: ""};
   }
   return null;
+}
+
+function cloneMoveObj(m){
+  return {
+    ply: m.ply,
+    from: m.from,
+    to: m.to,
+    name: m.name,
+    tx: m.tx,
+    ty: m.ty,
+    rawLine: m.rawLine,
+    comment: m.comment || ""
+  };
 }
 
 function parseFullKif(tx){
@@ -306,7 +336,7 @@ function parseFullKif(tx){
 
   for(var i = 0; i < ls.length; i++){
     var l = ls[i].trim();
-    if(!l || l.indexOf("*") === 0) continue;
+    if(!l) continue;
     var bMatch = l.match(/^変化：(\d+)手/);
     if(bMatch){
       if(cur.lines.length || cur.name === "本譜") blocks.push(cur);
@@ -317,11 +347,13 @@ function parseFullKif(tx){
       cur = {startPly: sp, lines: [], name: uName, parentIdx: 0};
       continue;
     }
-    if(/^\s*\d+\s+/.test(l)) cur.lines.push(l);
+    if(l.indexOf("*") === 0 || /^\s*\d+\s+/.test(l)){
+      cur.lines.push(l);
+    }
   }
   if(cur.lines.length || cur.name === "本譜") blocks.push(cur);
 
-  // 各ブロックの親ルート(parentIdx)と完全な手順(fullSeq)を構築する
+  // 各ブロックの親ルート(parentIdx)と完全な手順(fullSeq)および指し手ごとのKIFコメントを構築する
   for(var i = 0; i < blocks.length; i++){
      var b = blocks[i];
      var seq = [];
@@ -330,8 +362,17 @@ function parseFullKif(tx){
      if (i === 0) {
         b.parentIdx = -1;
         for(var j = 0; j < b.lines.length; j++){
-           var pm = parseLineMove(b.lines[j], px, py);
-           if(pm) { px = pm.tx; py = pm.ty; seq.push(pm); }
+           var lineStr = b.lines[j];
+           if(lineStr.indexOf("*") === 0){
+              var cText = lineStr.substring(1);
+              if(seq.length > 0){
+                 var lastMove = seq[seq.length - 1];
+                 lastMove.comment = lastMove.comment ? (lastMove.comment + "\n" + cText) : cText;
+              }
+           } else {
+              var pm = parseLineMove(lineStr, px, py);
+              if(pm) { px = pm.tx; py = pm.ty; seq.push(pm); }
+           }
         }
      } else {
         var parentSeq = null;
@@ -350,15 +391,29 @@ function parseFullKif(tx){
         }
         b.parentIdx = pIdx;
         
-        seq = parentSeq.slice(0, b.startPly - 1);
+        // 親ルートの指し手をコピー（変化側でコメントが付いても親ルートのオブジェクトを汚染しないようにする）
+        seq = [];
+        var copyCount = b.startPly - 1;
+        for(var cIdx = 0; cIdx < copyCount && cIdx < parentSeq.length; cIdx++){
+           seq.push(cloneMoveObj(parentSeq[cIdx]));
+        }
         if(seq.length > 0){
            px = seq[seq.length - 1].tx;
            py = seq[seq.length - 1].ty;
         }
         
         for(var j = 0; j < b.lines.length; j++){
-           var pm = parseLineMove(b.lines[j], px, py);
-           if(pm) { px = pm.tx; py = pm.ty; seq.push(pm); }
+           var lineStr2 = b.lines[j];
+           if(lineStr2.indexOf("*") === 0){
+              var cText2 = lineStr2.substring(1);
+              if(seq.length > 0){
+                 var lastMove2 = seq[seq.length - 1];
+                 lastMove2.comment = lastMove2.comment ? (lastMove2.comment + "\n" + cText2) : cText2;
+              }
+           } else {
+              var pm2 = parseLineMove(lineStr2, px, py);
+              if(pm2) { px = pm2.tx; py = pm2.ty; seq.push(pm2); }
+           }
         }
      }
      b.fullSeq = seq;
@@ -446,10 +501,10 @@ function getBranchesAt(ply){
   return uniqueBranches;
 }
 
-// 先手番用の匿名化された分岐情報表示
-function showSenteBranchInfo(branches, currentPly){
+// 先手番用の匿名化された分岐情報表示（指す前）
+function showSenteBranchInfo(branches, currentPly, prefixHtml){
   var el = document.getElementById("st");
-  var text = '<span style="color:#d81b60;">🔀 この局面には分岐があります</span><br><span style="font-size:12px;font-weight:normal;color:#333;">';
+  var text = (prefixHtml ? prefixHtml + "<br>" : "") + '<span style="color:#d81b60;">🔀 この局面には分岐があります</span><br><span style="font-size:12px;font-weight:normal;color:#333;">';
   var labels = ["A", "B", "C", "D", "E", "F", "G", "H"];
   var infoArr = [];
   for(var i = 0; i < branches.length; i++) {
@@ -461,6 +516,24 @@ function showSenteBranchInfo(branches, currentPly){
   }
   text += infoArr.join(" ／ ") + '</span>';
   el.innerHTML = text;
+}
+
+// 先手が正解した直後に「ほかにもこういう分岐がありました」を表示するHTML生成関数
+function showSentePostMoveBranches(branches, chosenBranch){
+  if(!branches || branches.length < 2 || !chosenBranch) return "";
+  var otherMoves = [];
+  var seenNames = {};
+  for(var i = 0; i < branches.length; i++){
+    var b = branches[i];
+    if(b.moveKey === chosenBranch.moveKey) continue;
+    var mName = "▲" + b.moveName;
+    if(!seenNames[mName]){
+      seenNames[mName] = true;
+      otherMoves.push(mName);
+    }
+  }
+  if(!otherMoves.length) return "";
+  return '<br><span style="font-size:12px;color:#d81b60;">🔀 ほかにも ' + otherMoves.join(" ／ ") + ' の分岐がありました</span>';
 }
 
 // 後手番用の具体的な分岐選択（既存）
@@ -665,12 +738,20 @@ function jumpToExactPly(playCount, skipBranch, preserveState){
   var el = document.getElementById("st");
   var nextPly = playCount + 1;
   var branches = skipBranch ? [] : getBranchesAt(nextPly);
+
+  // ジャンプ先の直前の指し手（st手目）にKIFコメントがある場合は表示できるように取得
+  var lastMoveCommentHtml = "";
+  if(st > 0 && rawMoves[st - 1] && rawMoves[st - 1].comment){
+    var lm = rawMoves[st - 1];
+    var lmTurn = (lm.ply % 2 === 1) ? "▲" : "△";
+    lastMoveCommentHtml = formatKifCommentHtml(lm.comment, lm.ply + "手目(" + lmTurn + lm.name + "):");
+  }
   
   if(branches.length >= 2){
     if(nextPly % 2 === 1){
-       showSenteBranchInfo(branches, nextPly);
+       showSenteBranchInfo(branches, nextPly, lastMoveCommentHtml ? lastMoveCommentHtml.replace(/^<br>/, "") : "");
     } else {
-       el.innerHTML = '<span style="color:#1976d2;">▶ ' + nextPly + '手目 相手の応手を選択してください</span>';
+       el.innerHTML = '<span style="color:#1976d2;">▶ ' + nextPly + '手目 相手の応手を選択してください</span>' + lastMoveCommentHtml;
        showBranchSheet(branches, nextPly);
     }
   } else {
@@ -678,9 +759,9 @@ function jumpToExactPly(playCount, skipBranch, preserveState){
        isA = true;
        setTimeout(autoPlayGote, 400);
     } else if (st < rawMoves.length && st % 2 === 0) {
-       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>';
+       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>' + lastMoveCommentHtml;
     } else {
-       el.innerText = "最終手まで進みました";
+       el.innerHTML = "最終手まで進みました" + lastMoveCommentHtml;
     }
   }
   uScr(); renderBoard();
@@ -784,7 +865,7 @@ function autoPlayGote() {
     bS[exp.to] = {t: pt, g: 1};
     
     var el = document.getElementById("st");
-    el.innerHTML += " 相手: △" + exp.name;
+    var goteCommentHtml = formatKifCommentHtml(exp.comment, "△" + exp.name + ":");
     
     st++;
     uScr();
@@ -794,15 +875,16 @@ function autoPlayGote() {
     var nextPly = st + 1;
     var branches = getBranchesAt(nextPly);
     if(branches.length >= 2){
-      showSenteBranchInfo(branches, nextPly);
+      var prefix = '<span style="font-size:12px;color:#555;">相手: △' + exp.name + '</span>' + goteCommentHtml;
+      showSenteBranchInfo(branches, nextPly, prefix);
       isA = false;
     } else {
       if (st < rawMoves.length) {
-        el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>';
+        el.innerHTML = '<span style="font-size:12px;color:#555;">相手: △' + exp.name + '</span>' + goteCommentHtml + '<br><span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>';
       } else {
         var fr = Math.round((cCnt / Math.ceil(rawMoves.length / 2)) * 100);
         if(fr > 100) fr = 100;
-        el.innerHTML = '<span style="color:#1b5e20;"> ◯ 完了！ 正答率: ' + fr + '%</span>';
+        el.innerHTML = '<span style="font-size:12px;color:#555;">相手: △' + exp.name + '</span>' + goteCommentHtml + '<br><span style="color:#1b5e20;"> ◯ 完了！ 正答率: ' + fr + '%</span>';
       }
       isA = false;
     }
@@ -828,6 +910,7 @@ function onC(x, y){
   var branches = getBranchesAt(nextPly);
   var exp = rawMoves[st];
   var matchedBranchStatName = null;
+  var chosenBranch = null;
 
   // 先手番で分岐がある場合、ユーザーの手がどのルートと一致するか自動判定してルートを切り替える
   if (branches.length >= 2 && nextPly % 2 === 1) { 
@@ -841,7 +924,7 @@ function onC(x, y){
       }
       if(matchedBranches.length > 0){
           isMatch = true;
-          var chosenBranch = matchedBranches[0];
+          chosenBranch = matchedBranches[0];
           // 同じ座標への移動で「成」と「不成」の分岐がある場合はユーザーに確認
           if(matchedBranches.length > 1 && !isDrop){
               var wantPromo = confirm("成りますか？");
@@ -901,21 +984,24 @@ function onC(x, y){
       st++; hFail = false; uScr(); renderBoard();
       updateMemoUI(); 
 
+      var senteCommentHtml = formatKifCommentHtml(exp.comment);
+      var postBranchHtml = showSentePostMoveBranches(branches, chosenBranch);
       var nextPly2 = st + 1; 
       var branches2 = getBranchesAt(nextPly2);
 
       if(branches2.length >= 2){
-        el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span> - 相手の応手を選択';
+        el.innerHTML = '<span style="color:#1b5e20;">◯ 正解（▲' + exp.name + '）</span>' + senteCommentHtml + postBranchHtml + '<br><span style="font-size:12px;color:#1976d2;">▶ 相手の応手を選択してください</span>';
         isA = false;
         setTimeout(function(){showBranchSheet(branches2, nextPly2);}, 250);
       } else {
         if(st < rawMoves.length){
-          el.innerHTML = '<span style="color:#1b5e20;">◯ 正解 (' + exp.name + ')</span>';
-          setTimeout(autoPlayGote, 220);
+          el.innerHTML = '<span style="color:#1b5e20;">◯ 正解（▲' + exp.name + '）</span>' + senteCommentHtml + postBranchHtml;
+          var delayMs = (senteCommentHtml || postBranchHtml) ? 900 : 220;
+          setTimeout(autoPlayGote, delayMs);
         } else {
           var fr = Math.round((cCnt / Math.ceil(rawMoves.length / 2)) * 100);
           if(fr > 100) fr = 100;
-          el.innerHTML = '<span style="color:#1b5e20;">◯ 完了！ 正答率: ' + fr + '%</span>';
+          el.innerHTML = '<span style="color:#1b5e20;">◯ 完了！ 正答率: ' + fr + '%</span>' + senteCommentHtml + postBranchHtml;
           isA = false;
         }
       }
@@ -1081,7 +1167,7 @@ function hRec(x, y, k){
     bS[k] = {t: pn, g: isG ? 1 : 0};
     var mName = zn[x] + kn[y] + pn + "打";
     var rawLine = nextPly + " " + mName;
-    var moveObj = {ply: nextPly, from: "h_" + pn, to: k, name: mName, tx: x, ty: y, rawLine: rawLine};
+    var moveObj = {ply: nextPly, from: "h_" + pn, to: k, name: mName, tx: x, ty: y, rawLine: rawLine, comment: ""};
 
     anim(from, k, pn, isG ? 1 : 0, function(){
       recordMoveToTree(moveObj);
@@ -1101,7 +1187,7 @@ function hRec(x, y, k){
     var mName2 = zn[x] + kn[y] + pn + (dP ? "成" : "") + "(" + fc + ")";
     var moveCore = zn[x] + kn[y] + pn + (dP ? "成" : "");
     var rawLine2 = nextPly + " " + mName2;
-    var moveObj2 = {ply: nextPly, from: from, to: k, name: moveCore, tx: x, ty: y, rawLine: rawLine2};
+    var moveObj2 = {ply: nextPly, from: from, to: k, name: moveCore, tx: x, ty: y, rawLine: rawLine2, comment: ""};
 
     anim(from, k, fn, isG ? 1 : 0, function(){
       if(bS[k]){var c = unp[bS[k].t] || bS[k].t; if(isG) gHnd[c] = (gHnd[c] || 0) + 1; else sHnd[c] = (sHnd[c] || 0) + 1;}
@@ -1147,6 +1233,12 @@ function exportRecTreeToKif(){
     var startIndex = idx === 0 ? 0 : (b.startPly - 1);
     for(var i = startIndex; i < b.fullSeq.length; i++){
       out.push(b.fullSeq[i].rawLine);
+      if(b.fullSeq[i].comment){
+        var cLines = b.fullSeq[i].comment.split(/\r?\n/);
+        for(var cl = 0; cl < cLines.length; cl++){
+          out.push("*" + cLines[cl]);
+        }
+      }
     }
     // このブロックから直接派生した子分岐を収集
     var children = [];
