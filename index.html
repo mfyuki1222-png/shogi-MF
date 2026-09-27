@@ -6,7 +6,7 @@
 <title>定跡チェッカー ver.1.9</title>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
-body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;}
+body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px 4px;user-select:none;overflow-anchor:none;}
 h2{font-size:1rem;margin:2px;display:flex;align-items:center;justify-content:center;gap:6px;}
 .ver-badge{font-size:11px;background:#1976d2;color:#fff;padding:1px 6px;border-radius:10px;font-weight:bold;}
 
@@ -24,12 +24,15 @@ h2{font-size:1rem;margin:2px;display:flex;align-items:center;justify-content:cen
   .btn-memo-m { display:none; }
 }
 
-#sb{display:none;font-size:.85rem;font-weight:bold;margin:2px auto;max-width:390px;justify-content:space-between;padding:2px 8px;background:#e0e7ed;border-radius:4px;}
-#st{font-size:.95rem;font-weight:bold;margin:3px 0;min-height:22px;}
+/* スコアバーとメッセージ欄の高さを完全固定し、盤面の上下揺れ（レイアウトシフト）を防止 */
+#sb{display:flex;visibility:hidden;height:24px;align-items:center;font-size:.85rem;font-weight:bold;margin:2px auto;max-width:390px;justify-content:space-between;padding:2px 8px;background:#e0e7ed;border-radius:4px;}
+#st{font-size:.95rem;font-weight:bold;margin:3px auto;max-width:390px;height:64px;display:flex;flex-direction:column; align-items:center;justify-content:center;overflow-y:auto;line-height:1.35;overflow-anchor:none;}
+#st-inner{width:100%;}
+
 .pbar{margin:3px auto;max-width:390px;display:flex;gap:4px;}
 #sel{flex:1;padding:5px;font-weight:bold;border:1px solid #aaa;border-radius:4px;background:#fff;font-size:13px;}
 .btn{background:#2e7d32;color:#fff;padding:5px 8px;border:none;border-radius:4px;font-size:12px;font-weight:bold;cursor:pointer;}
-.hand{width:100%;max-width:390px;min-height:38px;background:#deb887;border:1.5px solid #8c6239;border-radius:4px;margin:2px auto;display:flex;align-items:center;padding:2px;gap:4px;overflow-x:auto;}
+.hand{width:100%;max-width:390px;height:38px;background:#deb887;border:1.5px solid #8c6239;border-radius:4px;margin:2px auto;display:flex;align-items:center;padding:2px;gap:4px;overflow-x:auto;overflow-y:hidden;}
 .hp{position:relative;cursor:pointer;flex-shrink:0;}
 .hcnt{position:absolute;bottom:-2px;right:-2px;background:#222;color:#fff;font-size:10px;border-radius:50%;width:13px;height:13px;display:flex;align-items:center;justify-content:center;}
 #bbox{display:inline-block;background:#c89d5c;padding:3px;border-radius:4px;border:2px solid #8c6239;}
@@ -89,7 +92,7 @@ td.w-cell{background:#ffcdd2!important;}
     </div>
 
     <div id="sb"></div>
-    <div id="st">棋譜を登録または選択してください</div>
+    <div id="st"><div id="st-inner">棋譜を登録または選択してください</div></div>
     <div class="hand" id="gh"></div>
     <div id="bbox"><table id="tbl"><tbody id="tb"></tbody></table></div>
     <div class="hand" id="sh"></div>
@@ -161,7 +164,7 @@ function formatKifCommentHtml(comment, prefixLabel){
   if(!comment) return "";
   var escaped = escapeHtml(comment).replace(/\r?\n/g, "<br>");
   var prefix = prefixLabel ? ('<b>' + escapeHtml(prefixLabel) + '</b> ') : "";
-  return '<br><span style="display:inline-block;margin-top:2px;padding:2px 8px;background:#fff8e1;border-left:3px solid #ffa000;color:#4e342e;font-size:12px;font-weight:normal;text-align:left;border-radius:2px;">📝 ' + prefix + escaped + '</span>';
+  return '<br><span style="display:inline-block;margin-top:2px;padding:1px 6px;background:#fff8e1;border-left:3px solid #ffa000;color:#4e342e;font-size:11px;font-weight:normal;text-align:left;border-radius:2px;">📝 ' + prefix + escaped + '</span>';
 }
 
 function saveBranchStat(kifName, bName, isCorrect){
@@ -501,9 +504,16 @@ function getBranchesAt(ply){
   return uniqueBranches;
 }
 
+// メッセージ欄(#st)への出力ヘルパー（高さを変えずに内部を更新し、先頭へスクロールリセット）
+function setStHtml(html){
+  var el = document.getElementById("st-inner") || document.getElementById("st");
+  el.innerHTML = html;
+  var container = document.getElementById("st");
+  if(container) container.scrollTop = 0;
+}
+
 // 先手番用の匿名化された分岐情報表示（指す前）
 function showSenteBranchInfo(branches, currentPly, prefixHtml){
-  var el = document.getElementById("st");
   var text = (prefixHtml ? prefixHtml + "<br>" : "") + '<span style="color:#d81b60;">🔀 この局面には分岐があります</span><br><span style="font-size:12px;font-weight:normal;color:#333;">';
   var labels = ["A", "B", "C", "D", "E", "F", "G", "H"];
   var infoArr = [];
@@ -515,7 +525,7 @@ function showSenteBranchInfo(branches, currentPly, prefixHtml){
       infoArr.push(label + "：" + stat + "回");
   }
   text += infoArr.join(" ／ ") + '</span>';
-  el.innerHTML = text;
+  setStHtml(text);
 }
 
 // 先手が正解した直後に「ほかにもこういう分岐がありました」を表示するHTML生成関数
@@ -571,10 +581,10 @@ function showBranchModalManual(){
        showBranchSheet(bAt, currentPly);
     }
   } else {
-    var el = document.getElementById("st");
+    var el = document.getElementById("st-inner") || document.getElementById("st");
     var prevHtml = el.innerHTML;
-    el.innerHTML = '<span style="color:#e65100;">ℹ️ 現在の局面（' + currentPly + '手目）に分岐はありません</span>';
-    setTimeout(function(){ if(el.innerHTML.indexOf('分岐はありません') !== -1) el.innerHTML = prevHtml; }, 2000);
+    setStHtml('<span style="color:#e65100;">ℹ️ 現在の局面（' + currentPly + '手目）に分岐はありません</span>');
+    setTimeout(function(){ if(el.innerHTML.indexOf('分岐はありません') !== -1) setStHtml(prevHtml); }, 2000);
   }
 }
 
@@ -612,8 +622,12 @@ function initB(){
 
 function uScr(){
   var el = document.getElementById("sb");
-  if(isR || !rawMoves || !rawMoves.length){el.style.display = "none"; return;}
-  el.style.display = "flex";
+  // display:none にせず visibility で切り替えることで高さ24pxを常に維持する
+  if(isR || !rawMoves || !rawMoves.length){
+    el.style.visibility = "hidden";
+    return;
+  }
+  el.style.visibility = "visible";
   var currentPly = st;
   var totalPly = rawMoves.length;
   var playedSentePly = Math.ceil(currentPly / 2);
@@ -735,7 +749,6 @@ function jumpToExactPly(playCount, skipBranch, preserveState){
   cCnt = savedCC;
   hFail = savedHF;
   
-  var el = document.getElementById("st");
   var nextPly = playCount + 1;
   var branches = skipBranch ? [] : getBranchesAt(nextPly);
 
@@ -751,7 +764,7 @@ function jumpToExactPly(playCount, skipBranch, preserveState){
     if(nextPly % 2 === 1){
        showSenteBranchInfo(branches, nextPly, lastMoveCommentHtml ? lastMoveCommentHtml.replace(/^<br>/, "") : "");
     } else {
-       el.innerHTML = '<span style="color:#1976d2;">▶ ' + nextPly + '手目 相手の応手を選択してください</span>' + lastMoveCommentHtml;
+       setStHtml('<span style="color:#1976d2;">▶ ' + nextPly + '手目 相手の応手を選択してください</span>' + lastMoveCommentHtml);
        showBranchSheet(branches, nextPly);
     }
   } else {
@@ -759,9 +772,9 @@ function jumpToExactPly(playCount, skipBranch, preserveState){
        isA = true;
        setTimeout(autoPlayGote, 400);
     } else if (st < rawMoves.length && st % 2 === 0) {
-       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>' + lastMoveCommentHtml;
+       setStHtml('<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>' + lastMoveCommentHtml);
     } else {
-       el.innerHTML = "最終手まで進みました" + lastMoveCommentHtml;
+       setStHtml("最終手まで進みました" + lastMoveCommentHtml);
     }
   }
   uScr(); renderBoard();
@@ -864,7 +877,6 @@ function autoPlayGote() {
     if(isDrop) gHnd[pt]--;
     bS[exp.to] = {t: pt, g: 1};
     
-    var el = document.getElementById("st");
     var goteCommentHtml = formatKifCommentHtml(exp.comment, "△" + exp.name + ":");
     
     st++;
@@ -880,11 +892,11 @@ function autoPlayGote() {
       isA = false;
     } else {
       if (st < rawMoves.length) {
-        el.innerHTML = '<span style="font-size:12px;color:#555;">相手: △' + exp.name + '</span>' + goteCommentHtml + '<br><span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>';
+        setStHtml('<span style="font-size:12px;color:#555;">相手: △' + exp.name + '</span>' + goteCommentHtml + '<br><span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>');
       } else {
         var fr = Math.round((cCnt / Math.ceil(rawMoves.length / 2)) * 100);
         if(fr > 100) fr = 100;
-        el.innerHTML = '<span style="font-size:12px;color:#555;">相手: △' + exp.name + '</span>' + goteCommentHtml + '<br><span style="color:#1b5e20;"> ◯ 完了！ 正答率: ' + fr + '%</span>';
+        setStHtml('<span style="font-size:12px;color:#555;">相手: △' + exp.name + '</span>' + goteCommentHtml + '<br><span style="color:#1b5e20;"> ◯ 完了！ 正答率: ' + fr + '%</span>');
       }
       isA = false;
     }
@@ -893,8 +905,8 @@ function autoPlayGote() {
 
 function onC(x, y){
   if(isA) return; var k = x + "," + y; if(isR){hRec(x, y, k); return;}
-  var el = document.getElementById("st"); hI = null;
-  if(!rawMoves.length){el.innerText = "棋譜を登録または選択してください"; return;}
+  hI = null;
+  if(!rawMoves.length){setStHtml("棋譜を登録または選択してください"); return;}
   if(!sF){if(bS[k] && !bS[k].g){closeBSheet(); sF = k; renderBoard();} return;}
   if(sF === k){sF = null; renderBoard(); return;}
   if(bS[k] && !bS[k].g){closeBSheet(); sF = k; renderBoard(); return;}
@@ -990,18 +1002,18 @@ function onC(x, y){
       var branches2 = getBranchesAt(nextPly2);
 
       if(branches2.length >= 2){
-        el.innerHTML = '<span style="color:#1b5e20;">◯ 正解（▲' + exp.name + '）</span>' + senteCommentHtml + postBranchHtml + '<br><span style="font-size:12px;color:#1976d2;">▶ 相手の応手を選択してください</span>';
+        setStHtml('<span style="color:#1b5e20;">◯ 正解（▲' + exp.name + '）</span>' + senteCommentHtml + postBranchHtml + '<br><span style="font-size:12px;color:#1976d2;">▶ 相手の応手を選択してください</span>');
         isA = false;
         setTimeout(function(){showBranchSheet(branches2, nextPly2);}, 250);
       } else {
         if(st < rawMoves.length){
-          el.innerHTML = '<span style="color:#1b5e20;">◯ 正解（▲' + exp.name + '）</span>' + senteCommentHtml + postBranchHtml;
+          setStHtml('<span style="color:#1b5e20;">◯ 正解（▲' + exp.name + '）</span>' + senteCommentHtml + postBranchHtml);
           var delayMs = (senteCommentHtml || postBranchHtml) ? 900 : 220;
           setTimeout(autoPlayGote, delayMs);
         } else {
           var fr = Math.round((cCnt / Math.ceil(rawMoves.length / 2)) * 100);
           if(fr > 100) fr = 100;
-          el.innerHTML = '<span style="color:#1b5e20;">◯ 完了！ 正答率: ' + fr + '%</span>' + senteCommentHtml + postBranchHtml;
+          setStHtml('<span style="color:#1b5e20;">◯ 完了！ 正答率: ' + fr + '%</span>' + senteCommentHtml + postBranchHtml);
           isA = false;
         }
       }
@@ -1009,7 +1021,7 @@ function onC(x, y){
   } else {
     hFail = true; isA = true; var op = isDrop ? null : bS[from]; if(!isDrop) delete bS[from]; renderBoard();
     anim(from, to, pt, 0, function(){
-      el.innerHTML = '<span style="color:#c62828;">× 定跡外れ！</span>'; renderBoard(to);
+      setStHtml('<span style="color:#c62828;">× 定跡外れ！</span>'); renderBoard(to);
       setTimeout(function(){
         anim(to, from, pt, 0, function(){if(!isDrop) bS[from] = op; isA = false; renderBoard();});
       }, 450);
@@ -1028,7 +1040,7 @@ function sRec(){
   rPly = 0;
   document.getElementById("rbar").style.display = "block";
   document.getElementById("pbtns").style.display = "none";
-  document.getElementById("sb").style.display = "none";
+  document.getElementById("sb").style.visibility = "hidden";
   closeBSheet();
   initB();
   uRSt();
@@ -1046,7 +1058,7 @@ function eRec(){
 function uRSt(){
   var bName = rTree[rCurBlock] ? rTree[rCurBlock].name : "本譜";
   var totalInRoute = rTree[rCurBlock] ? rTree[rCurBlock].fullSeq.length : 0;
-  document.getElementById("st").innerHTML = '<span style="color:#d81b60;">🔴 作成中 [' + bName + ']: ' + rPly + '/' + totalInRoute + '手目 (' + (rTurn === 0 ? "▲先手番" : "△後手番") + ')</span>';
+  setStHtml('<span style="color:#d81b60;">🔴 作成中 [' + bName + ']: ' + rPly + '/' + totalInRoute + '手目 (' + (rTurn === 0 ? "▲先手番" : "△後手番") + ')</span>');
 }
 
 function rebuildRecBoard(blockIdx, targetPly){
@@ -1278,7 +1290,7 @@ function sH(){
   hFail = true; 
   hI = {from: rawMoves[st].from, to: rawMoves[st].to}; 
   var turnStr = (rawMoves[st].ply % 2 === 1) ? "▲" : "△";
-  document.getElementById("st").innerHTML = '<span style="color:#0277bd;">💡 正解: 【' + turnStr + rawMoves[st].name + '】</span>'; 
+  setStHtml('<span style="color:#0277bd;">💡 正解: 【' + turnStr + rawMoves[st].name + '】</span>'); 
   renderBoard();
 }
 
@@ -1289,17 +1301,16 @@ function rG(){
   }
   initB(); uScr(); renderBoard(); 
   
-  var el = document.getElementById("st");
   if(rawMoves.length) {
     var nextPly = 1;
     var branches = getBranchesAt(nextPly);
     if(branches.length >= 2){
        showSenteBranchInfo(branches, nextPly);
     } else {
-       el.innerHTML = '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>';
+       setStHtml('<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>');
     }
   } else {
-    el.innerText = "棋譜を登録または選択してください";
+    setStHtml("棋譜を登録または選択してください");
   }
   updateMemoUI();
 }
