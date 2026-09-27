@@ -4,7 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>定跡チェッカー ver.2.0</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script type="module">
+import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import { getFirestore, collection, doc, getDocs, setDoc, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+window._fb = {
+  initializeApp, getApps, getApp,
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut,
+  getFirestore, collection, doc, getDocs, setDoc, writeBatch, onSnapshot
+};
+window.dispatchEvent(new Event("fb-sdk-ready"));
+</script>
 <style>
 *{box-sizing:border-box;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 body{font-family:sans-serif;text-align:center;background:#eef2f5;margin:0;padding:4px 4px 130px;user-select:none;overflow-anchor:none;}
@@ -100,33 +111,54 @@ td.w-cell{background:#ffcdd2!important;}
 </div>
 <div id="modal" class="modal"><div class="mbox"><b>タイトル</b><input id="kt" placeholder="相掛かり"><b>KIFテキスト</b><textarea id="kx"></textarea><div style="text-align:right;"><button class="btn" style="background:#888;" onclick="cM('modal')">閉じる</button> <button class="btn" onclick="sApp()">保存</button></div></div></div>
 <div id="smodal" class="modal"><div class="mbox">
-  <b style="display:block;margin-bottom:6px;font-size:14px;">☁️ クラウド自動同期</b>
+  <b style="display:block;margin-bottom:6px;font-size:14px;">☁️ Firebase クラウド自動同期</b>
   <div class="sync-sec">
     <div id="auth-status-msg" style="font-weight:bold;margin-bottom:6px;color:#1976d2;">状態確認中...</div>
     <div id="auth-form-area">
-      <input id="auth-email" type="email" placeholder="メールアドレス">
-      <input id="auth-pass" type="password" placeholder="パスワード（6文字以上）">
-      <div style="display:flex;gap:4px;"><button class="btn" style="flex:1;background:#1976d2;" onclick="cloudSignIn()">ログイン</button><button class="btn" style="flex:1;background:#455a64;" onclick="cloudSignUp()">新規登録</button></div>
+      <div style="display:flex;gap:4px;"><button class="btn" style="flex:1;background:#1976d2;padding:8px;" onclick="cloudSignIn()">🔑 Googleアカウントでログイン</button></div>
     </div>
     <div id="auth-logged-area" style="display:none;gap:4px;">
       <button class="btn" style="flex:1;background:#00897b;" onclick="syncNowManual()">🔄 今すぐ同期</button><button class="btn" style="background:#78909c;" onclick="cloudSignOut()">ログアウト</button>
     </div>
   </div>
-  <details style="font-size:11px;color:#555;margin-bottom:6px;"><summary style="cursor:pointer;font-weight:bold;">⚙️ 接続先設定（コード内未記入時）</summary><div style="margin-top:6px;"><input id="cfg-sb-url" placeholder="Supabase URL"><input id="cfg-sb-key" placeholder="Supabase Anon Key"><button class="btn" style="background:#546e7a;width:100%;" onclick="saveCustomSbConfig()">保存して再接続</button></div></details>
+  <details style="font-size:11px;color:#555;margin-bottom:6px;">
+    <summary style="cursor:pointer;font-weight:bold;">⚙️ Firebase 接続設定（変更時のみ）</summary>
+    <div style="margin-top:6px;">
+      <input id="cfg-fb-apikey" placeholder="apiKey (AIzaSy...)">
+      <input id="cfg-fb-authdomain" placeholder="authDomain (shogi-95e20.firebaseapp.com)">
+      <input id="cfg-fb-projectid" placeholder="projectId (shogi-95e20)">
+      <input id="cfg-fb-bucket" placeholder="storageBucket (shogi-95e20.firebasestorage.app)">
+      <input id="cfg-fb-senderid" placeholder="messagingSenderId (1299489967)">
+      <input id="cfg-fb-appid" placeholder="appId (1:1299489967:web:1febbda2332da52f42e05a)">
+      <textarea id="cfg-fb-raw" placeholder="または firebaseConfig の { ... } をここに貼り付けて保存も可" style="height:56px;font-size:11px;"></textarea>
+      <button class="btn" style="background:#546e7a;width:100%;" onclick="saveCustomFbConfig()">保存して再接続</button>
+    </div>
+  </details>
   <div style="text-align:right;"><button class="btn" style="background:#888;" onclick="cM('smodal')">閉じる</button></div>
 </div></div>
 <div id="mmodal" class="modal"><div class="mbox" style="max-width:380px;"><b style="display:block;margin-bottom:6px;font-size:14px;">📝 メモ <span id="memo-kif-name-m" style="font-weight:normal;color:#666;font-size:11px;"></span></b><textarea id="memo-ta-m" oninput="syncMemo(this,'memo-ta-pc')" style="height:250px;font-size:13px;"></textarea><div style="text-align:right;"><button class="btn" style="background:#888;" onclick="cM('mmodal')">閉じる</button></div></div></div>
 <div id="bsheet"><div class="bs-header"><span class="bs-title" id="bs-title">🔀 分岐を選択</span><button class="btn" style="background:#6c757d;padding:2px 8px;font-size:11px;" onclick="closeBSheet()">✕ 閉じる</button></div><div id="bs-list"></div></div>
 
 <script>
-// 【Supabase設定】
-const SUPABASE_URL = "ここにSupabase URL";
-const SUPABASE_ANON_KEY = "ここにAnon Key";
+// ============================================================================
+// 【Firebase 設定欄】
+// Firebase Console で取得したウェブアプリの設定値（shogi-95e20）
+// ============================================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyAI5wQoUmcje4jvGRa8LXGnYTYAd1nMvS4",
+  authDomain: "shogi-95e20.firebaseapp.com",
+  projectId: "shogi-95e20",
+  storageBucket: "shogi-95e20.firebasestorage.app",
+  messagingSenderId: "1299489967",
+  appId: "1:1299489967:web:1febbda2332da52f42e05a",
+  measurementId: "G-HL97ZV9YEP"
+};
+const FIREBASE_CONFIG = firebaseConfig;
 
 var kifStore={},memoStore={},practiceEvents={},branchStats={},skifs={},kifMemos={};
 var parsedTree=[],currentKifId="",currentKifName="",currentBlockIndex=0,rawMoves=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[],cCnt=0,hFail=false,isR=false,rTurn=0,rTree=[],rCurBlock=0,rPly=0;
 var goteTimer=null,goteTimerVersion=0,currentPracticeBranch=null,bStatDone=false;
-var sbClient=null,sbInitPromise=null,currentUser=null,realtimeChan=null,isSyncing=false,pendingSync=false,memoSyncTimer=null;
+var fbApp=null,fbAuth=null,fbDb=null,fbInitPromise=null,authUnsub=null,realtimeUnsubs=[],memoRealtimeUnsubs={},currentUser=null,isSyncing=false,pendingSync=false,memoSyncTimer=null;
 var cm={'１':1,'２':2,'３':3,'４':4,'５':5,'６':6,'７':7,'８':8,'９':9,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
 var zn=["","１","２","３","４","５","６","７","８","９"],kn=["","一","二","三","四","五","六","七","八","九"];
 var unp={"と":"歩","成香":"香","成桂":"桂","成銀":"銀","馬":"角","竜":"飛","龍":"飛"},pmap={"角":"馬","飛":"竜","歩":"と","銀":"成銀","桂":"成桂","香":"成香"};
@@ -141,6 +173,9 @@ function computeBranchId(sp,seq){
   if(sp===1)return "br_main";
   var p=[];for(var i=0;i<seq.length;i++)p.push(seq[i].ply+":"+seq[i].from+"-"+seq[i].to+":"+seq[i].name);
   return "br_"+sp+"_"+fnv1aHash(p.join("|"));
+}
+function memoDocId(kifId,branchId,ply){
+  return encodeURIComponent(kifId)+"__"+encodeURIComponent(branchId)+"__"+ply;
 }
 function saveLocalStores(){
   try{localStorage.setItem("skifs_kif_store_v2",JSON.stringify(kifStore));localStorage.setItem("skifs_memo_store_v2",JSON.stringify(memoStore));localStorage.setItem("skifs_stat_events_v2",JSON.stringify(practiceEvents));}catch(e){}
@@ -254,7 +289,7 @@ function regK(t,tx,fId){
   var tr=parseFullKif(tx);if(!tr.length||!tr[0].fullSeq.length){alert("認識失敗");return false;}
   var kId=fId||genUuid(),now=Date.now();
   kifStore[kId]={kif_id:kId,title:t,kif_text:tx,updated_at:now,deleted_at:null,dirty:true};
-  saveLocalStores();uD(kId);lB(tx,kId);pushSingleKifAsync(kId);return true;
+  saveLocalStores();uD(kId);lB(tx,kId);pushSingleKifAsync(kId);ensureMemoRealtimeForKif(kId);return true;
 }
 function renKif(){
   if(!currentKifId||!kifStore[currentKifId])return;
@@ -695,117 +730,346 @@ function rG(){
   updateMemoUI();
 }
 
-// クラウド自動同期
-function getEffectiveSbConfig(){
-  var u=SUPABASE_URL,k=SUPABASE_ANON_KEY;
-  if(!u||u.indexOf("ここに")!==-1||!k||k.indexOf("ここに")!==-1){
-    try{var cu=localStorage.getItem("skifs_custom_sb_url"),ck=localStorage.getItem("skifs_custom_sb_key");if(cu&&ck){u=cu;k=ck;}}catch(e){}
+// ============================================================================
+// Firebase クラウド自動同期エンジン (Google Authentication / Cloud Firestore)
+// ============================================================================
+function getEffectiveFbConfig(){
+  var cfg={
+    apiKey:FIREBASE_CONFIG.apiKey||"AIzaSyAI5wQoUmcje4jvGRa8LXGnYTYAd1nMvS4",
+    authDomain:FIREBASE_CONFIG.authDomain||"shogi-95e20.firebaseapp.com",
+    projectId:FIREBASE_CONFIG.projectId||"shogi-95e20",
+    storageBucket:FIREBASE_CONFIG.storageBucket||"shogi-95e20.firebasestorage.app",
+    messagingSenderId:FIREBASE_CONFIG.messagingSenderId||"1299489967",
+    appId:FIREBASE_CONFIG.appId||"1:1299489967:web:1febbda2332da52f42e05a",
+    measurementId:FIREBASE_CONFIG.measurementId||"G-HL97ZV9YEP"
+  };
+  try{
+    var saved=JSON.parse(localStorage.getItem("skifs_custom_fb_config")||"null");
+    if(saved&&saved.apiKey&&saved.projectId){
+      cfg.apiKey=saved.apiKey;
+      if(saved.authDomain)cfg.authDomain=saved.authDomain;
+      if(saved.projectId)cfg.projectId=saved.projectId;
+      if(saved.storageBucket)cfg.storageBucket=saved.storageBucket;
+      if(saved.messagingSenderId)cfg.messagingSenderId=saved.messagingSenderId;
+      if(saved.appId)cfg.appId=saved.appId;
+      if(saved.measurementId)cfg.measurementId=saved.measurementId;
+    }
+  }catch(e){}
+  var valid=!!(cfg.apiKey&&cfg.authDomain&&cfg.projectId&&cfg.apiKey.indexOf("ここに")===-1);
+  return{config:cfg,valid:valid};
+}
+
+function parseRawFbConfigText(raw){
+  if(!raw)return null;
+  var out={};
+  var keys=["apiKey","authDomain","projectId","storageBucket","messagingSenderId","appId","measurementId"];
+  for(var i=0;i<keys.length;i++){
+    var k=keys[i],re=new RegExp(k+"\\s*:\\s*[\"']([^\"']+)[\"']");
+    var m=raw.match(re);if(m)out[k]=m[1].trim();
   }
-  return{url:u,key:k,valid:!!(u&&k&&u.indexOf("http")===0&&k.indexOf("ここに")===-1)};
+  return(out.apiKey&&out.projectId)?out:null;
 }
-async function saveCustomSbConfig(){
-  var u=document.getElementById("cfg-sb-url").value.trim(),k=document.getElementById("cfg-sb-key").value.trim();
-  if(!u||!k){alert("URLとAnon Keyを入力してください");return;}
-  try{localStorage.setItem("skifs_custom_sb_url",u);localStorage.setItem("skifs_custom_sb_key",k);}catch(e){}
-  sbClient=null;sbInitPromise=null;await initSupabaseClient();alert("接続先を保存しました。");
+
+async function saveCustomFbConfig(){
+  var raw=document.getElementById("cfg-fb-raw").value.trim();
+  var parsed=parseRawFbConfigText(raw);
+  var cfg={
+    apiKey:(parsed&&parsed.apiKey)||document.getElementById("cfg-fb-apikey").value.trim()||FIREBASE_CONFIG.apiKey,
+    authDomain:(parsed&&parsed.authDomain)||document.getElementById("cfg-fb-authdomain").value.trim()||FIREBASE_CONFIG.authDomain,
+    projectId:(parsed&&parsed.projectId)||document.getElementById("cfg-fb-projectid").value.trim()||FIREBASE_CONFIG.projectId,
+    storageBucket:(parsed&&parsed.storageBucket)||document.getElementById("cfg-fb-bucket").value.trim()||FIREBASE_CONFIG.storageBucket,
+    messagingSenderId:(parsed&&parsed.messagingSenderId)||document.getElementById("cfg-fb-senderid").value.trim()||FIREBASE_CONFIG.messagingSenderId,
+    appId:(parsed&&parsed.appId)||document.getElementById("cfg-fb-appid").value.trim()||FIREBASE_CONFIG.appId,
+    measurementId:(parsed&&parsed.measurementId)||FIREBASE_CONFIG.measurementId
+  };
+  if(cfg.projectId&&!cfg.authDomain)cfg.authDomain=cfg.projectId+".firebaseapp.com";
+  if(!cfg.apiKey||!cfg.projectId){
+    alert("apiKey と projectId（または firebaseConfig の貼り付け）を入力してください");
+    return;
+  }
+  try{localStorage.setItem("skifs_custom_fb_config",JSON.stringify(cfg));}catch(e){}
+  document.getElementById("cfg-fb-raw").value="";
+  clearRealtimeSubscriptions();
+  if(authUnsub){try{authUnsub();}catch(e){}authUnsub=null;}
+  fbApp=null;fbAuth=null;fbDb=null;fbInitPromise=null;
+  await initFirebaseClient(true);
+  alert("Firebase接続設定を保存しました。Googleアカウントでログインを行ってください。");
 }
+
 function oSync(){
-  var cfg=getEffectiveSbConfig();
-  if(cfg.valid){document.getElementById("cfg-sb-url").value=cfg.url;document.getElementById("cfg-sb-key").value=cfg.key;}
+  var eff=getEffectiveFbConfig(),c=eff.config;
+  if(c){
+    document.getElementById("cfg-fb-apikey").value=c.apiKey||"";
+    document.getElementById("cfg-fb-authdomain").value=c.authDomain||"";
+    document.getElementById("cfg-fb-projectid").value=c.projectId||"";
+    document.getElementById("cfg-fb-bucket").value=c.storageBucket||"";
+    document.getElementById("cfg-fb-senderid").value=c.messagingSenderId||"";
+    document.getElementById("cfg-fb-appid").value=c.appId||"";
+  }
   updateAuthModalUI();oM("smodal");
 }
-function triggerCloudSyncBtn(){if(!sbClient||!currentUser)oSync();else syncNowManual();}
+function triggerCloudSyncBtn(){if(!fbDb||!currentUser)oSync();else syncNowManual();}
 function updateAuthModalUI(){
-  var msg=document.getElementById("auth-status-msg"),fA=document.getElementById("auth-form-area"),lA=document.getElementById("auth-logged-area"),cfg=getEffectiveSbConfig();
-  if(!cfg.valid){msg.style.color="#c62828";msg.textContent="⚠️ SupabaseのURLとAnon Keyが未設定です";fA.style.display="block";lA.style.display="none";}
-  else if(currentUser){msg.style.color="#2e7d32";msg.textContent="✅ ログイン中: "+(currentUser.email||"ユーザー");fA.style.display="none";lA.style.display="flex";}
-  else{msg.style.color="#1976d2";msg.textContent="🔑 同じアカウントでログインするとPC・スマホ間で自動同期されます";fA.style.display="block";lA.style.display="none";}
+  var msg=document.getElementById("auth-status-msg"),fA=document.getElementById("auth-form-area"),lA=document.getElementById("auth-logged-area"),eff=getEffectiveFbConfig();
+  if(!eff.valid){
+    msg.style.color="#c62828";msg.textContent="⚠️ Firebase設定が未入力です（下の「⚙️ Firebase 接続設定」またはコード上部に設定してください）";
+    fA.style.display="block";lA.style.display="none";
+  }else if(currentUser){
+    msg.style.color="#2e7d32";msg.textContent="✅ ログイン中: "+(currentUser.displayName||currentUser.email||"Googleユーザー");
+    fA.style.display="none";lA.style.display="flex";
+  }else{
+    msg.style.color="#1976d2";msg.textContent="🔑 同じGoogleアカウントでログインするとPC・スマホ間で自動同期されます";
+    fA.style.display="block";lA.style.display="none";
+  }
 }
-async function initSupabaseClient(){
-  if(sbClient)return sbClient;if(sbInitPromise)return await sbInitPromise;
-  sbInitPromise=(async function(){
-    var cfg=getEffectiveSbConfig();if(!cfg.valid||!window.supabase){setSyncStatus("none","☁️ 未設定");updateAuthModalUI();return null;}
-    try{
-      sbClient=window.supabase.createClient(cfg.url,cfg.key);
-      var res=await sbClient.auth.getSession();currentUser=(res&&res.data&&res.data.session)?res.data.session.user:null;
+
+function clearRealtimeSubscriptions(){
+  for(var i=0;i<realtimeUnsubs.length;i++){
+    try{realtimeUnsubs[i]();}catch(e){}
+  }
+  realtimeUnsubs=[];
+  for(var kid in memoRealtimeUnsubs){
+    try{memoRealtimeUnsubs[kid]();}catch(e){}
+  }
+  memoRealtimeUnsubs={};
+}
+
+async function initFirebaseClient(forceNewApp){
+  if(!window._fb){
+    setSyncStatus("none","☁️ 読込中...");
+    return null;
+  }
+  if(fbDb&&!forceNewApp)return fbDb;
+  if(fbInitPromise)return await fbInitPromise;
+
+  fbInitPromise=(async function(){
+    var eff=getEffectiveFbConfig();
+    if(!eff.valid){
+      setSyncStatus("none","☁️ 未設定");
       updateAuthModalUI();
-      if(currentUser){setupRealtimeSubscription();await syncWithCloud(false);}else setSyncStatus("none","☁️ 未ログイン");
-      sbClient.auth.onAuthStateChange(function(ev,ses){
-        var nu=ses?ses.user:null,pid=currentUser?currentUser.id:null,nid=nu?nu.id:null;currentUser=nu;updateAuthModalUI();
-        if(nid&&nid!==pid){setupRealtimeSubscription();syncWithCloud(false);}
-        else if(!nid){if(realtimeChan&&sbClient){try{sbClient.removeChannel(realtimeChan);}catch(e){}realtimeChan=null;}setSyncStatus("none","☁️ 未ログイン");}
+      return null;
+    }
+    try{
+      setSyncStatus("ing","☁️ 接続中");
+      var fb=window._fb;
+      var appName=forceNewApp?("shogi_app_"+Date.now()):"DEFAULT";
+      var apps=fb.getApps();
+      fbApp=(!forceNewApp&&apps.length)?fb.getApp():fb.initializeApp(eff.config,appName);
+      fbAuth=fb.getAuth(fbApp);
+      fbDb=fb.getFirestore(fbApp);
+      console.log("[Firebase] Initialized project:",eff.config.projectId);
+
+      if(authUnsub){try{authUnsub();}catch(e){}authUnsub=null;}
+      authUnsub=fb.onAuthStateChanged(fbAuth,function(user){
+        var prevUid=currentUser?currentUser.uid:null;
+        var nextUid=user?user.uid:null;
+        currentUser=user||null;
+        updateAuthModalUI();
+        console.log("[Firebase Auth] State changed:",nextUid?"Logged in ("+(user.email||user.uid)+")":"Logged out");
+        if(nextUid){
+          if(nextUid!==prevUid){
+            syncWithCloud(false).then(function(){
+              setupRealtimeSubscription();
+            });
+          }
+        }else{
+          clearRealtimeSubscriptions();
+          setSyncStatus("none","☁️ 未ログイン");
+        }
       });
-      return sbClient;
-    }catch(e){setSyncStatus("err","⚠️ 接続エラー");return null;}finally{sbInitPromise=null;}
+      return fbDb;
+    }catch(e){
+      console.error("[Firebase] Init error:",e);
+      setSyncStatus("err","⚠️ 接続エラー");
+      return null;
+    }finally{
+      fbInitPromise=null;
+    }
   })();
-  return await sbInitPromise;
+  return await fbInitPromise;
 }
+
 async function cloudSignIn(){
-  if(!sbClient){await initSupabaseClient();if(!sbClient){alert("Supabase接続設定を確認してください");return;}}
-  var e=document.getElementById("auth-email").value.trim(),p=document.getElementById("auth-pass").value;
-  if(!e||!p){alert("メールとパスワードを入力してください");return;}
+  if(!fbAuth){await initFirebaseClient(false);if(!fbAuth){alert("Firebase接続設定を確認してください");return;}}
   setSyncStatus("ing","☁️ 認証中...");
   try{
-    var r=await sbClient.auth.signInWithPassword({email:e,password:p});
-    if(r.error){setSyncStatus("err","⚠️ 認証失敗");alert("ログイン失敗: "+r.error.message);return;}
-    currentUser=r.data.user;updateAuthModalUI();setupRealtimeSubscription();showToast("☁️ ログインしました");await syncWithCloud(true);
-  }catch(err){setSyncStatus("err","⚠️ 認証エラー");}
+    var fb=window._fb;
+    var provider=new fb.GoogleAuthProvider();
+    var r=await fb.signInWithPopup(fbAuth,provider);
+    currentUser=r.user;
+    updateAuthModalUI();
+    showToast("☁️ Googleログインしました");
+    await syncWithCloud(true);
+    setupRealtimeSubscription();
+  }catch(err){
+    console.error("[Firebase Auth] Google SignIn error:",err);
+    setSyncStatus("err","⚠️ 認証失敗");
+    alert("Googleログイン失敗: "+(err&&err.message?err.message:"認証設定を確認してください"));
+  }
 }
-async function cloudSignUp(){
-  if(!sbClient){await initSupabaseClient();if(!sbClient){alert("Supabase接続設定を確認してください");return;}}
-  var e=document.getElementById("auth-email").value.trim(),p=document.getElementById("auth-pass").value;
-  if(!e||p.length<6){alert("メールと6文字以上のパスワードを入力してください");return;}
-  setSyncStatus("ing","☁️ 登録中...");
-  try{
-    var r=await sbClient.auth.signUp({email:e,password:p});
-    if(r.error){setSyncStatus("err","⚠️ 登録失敗");alert("登録失敗: "+r.error.message);return;}
-    if(r.data&&r.data.session){currentUser=r.data.user;updateAuthModalUI();setupRealtimeSubscription();showToast("☁️ 登録完了・同期開始");await syncWithCloud(true);}
-    else{setSyncStatus("none","☁️ 確認メール送信");alert("確認メールを送信しました。");}
-  }catch(err){setSyncStatus("err","⚠️ 登録エラー");}
-}
-async function cloudSignOut(){if(!sbClient)return;try{await sbClient.auth.signOut();currentUser=null;updateAuthModalUI();setSyncStatus("none","☁️ 未ログイン");showToast("ログアウトしました");}catch(e){}}
-async function syncNowManual(){if(!navigator.onLine){setSyncStatus("err","⚠️ オフライン");showToast("オフラインです");return;}await syncWithCloud(true);}
+var cloudSignUp=cloudSignIn;
 
+async function cloudSignOut(){
+  if(!fbAuth)return;
+  try{
+    clearRealtimeSubscriptions();
+    await window._fb.signOut(fbAuth);
+    currentUser=null;
+    updateAuthModalUI();
+    setSyncStatus("none","☁️ 未ログイン");
+    showToast("ログアウトしました");
+  }catch(e){console.error("[Firebase Auth] SignOut error:",e);}
+}
+
+async function syncNowManual(){
+  if(!navigator.onLine){setSyncStatus("err","☁️ オフライン");showToast("オフラインです");return;}
+  await syncWithCloud(true);
+}
+
+// 単一KIFの即時Firestore保存: users/{uid}/kifs/{kifId}
 async function pushSingleKifAsync(kId){
-  if(!sbClient||!currentUser||!navigator.onLine||!kifStore[kId])return;
-  var k=kifStore[kId],pu=k.updated_at;
+  if(!fbDb||!currentUser||!navigator.onLine||!kifStore[kId])return;
+  var k=kifStore[kId],pu=k.updated_at,fb=window._fb;
   try{
     setSyncStatus("ing","☁️ 同期中...");
-    var r=await sbClient.from("user_kifs").upsert({user_id:currentUser.id,kif_id:k.kif_id,title:k.title,kif_text:k.kif_text||"",updated_at:pu,deleted_at:k.deleted_at||null},{onConflict:"user_id,kif_id"});
-    if(!r.error){if(kifStore[kId]&&kifStore[kId].updated_at===pu){kifStore[kId].dirty=false;saveLocalStores();}setSyncStatus("ok","☁️ 同期済み");}else setSyncStatus("err","⚠️ 同期エラー");
-  }catch(e){setSyncStatus("err","⚠️ 同期エラー");}
-}
-async function pushSingleMemoAsync(mKey){
-  if(!sbClient||!currentUser||!navigator.onLine||!memoStore[mKey])return;
-  var m=memoStore[mKey],pu=m.updated_at;
-  try{
-    setSyncStatus("ing","☁️ 同期中...");
-    var r=await sbClient.from("user_kif_memos").upsert({user_id:currentUser.id,kif_id:m.kif_id,branch_id:m.branch_id,ply:m.ply,memo_text:m.memo_text||"",updated_at:pu},{onConflict:"user_id,kif_id,branch_id,ply"});
-    if(!r.error){if(memoStore[mKey]&&memoStore[mKey].updated_at===pu){memoStore[mKey].dirty=false;saveLocalStores();}setSyncStatus("ok","☁️ 同期済み");}else setSyncStatus("err","⚠️ 同期エラー");
-  }catch(e){setSyncStatus("err","⚠️ 同期エラー");}
-}
-async function pushSinglePracticeEventAsync(ev){
-  if(!sbClient||!currentUser||!navigator.onLine||!ev)return;
-  try{
-    var r=await sbClient.from("user_practice_events").upsert({event_id:ev.event_id,user_id:currentUser.id,kif_id:ev.kif_id,branch_id:ev.branch_id,total_delta:ev.total_delta,ok_delta:ev.ok_delta,created_at:ev.created_at},{onConflict:"event_id"});
-    if(!r.error){if(practiceEvents[ev.event_id])practiceEvents[ev.event_id].synced=true;saveLocalStores();setSyncStatus("ok","☁️ 同期済み");}
-  }catch(e){}
+    var ref=fb.doc(fbDb,"users",currentUser.uid,"kifs",k.kif_id);
+    await fb.setDoc(ref,{
+      user_id:currentUser.uid,
+      kif_id:k.kif_id,
+      title:k.title||"無題",
+      kif_text:k.kif_text||"",
+      updated_at:pu,
+      deleted_at:k.deleted_at||null
+    });
+    if(kifStore[kId]&&kifStore[kId].updated_at===pu){
+      kifStore[kId].dirty=false;
+      saveLocalStores();
+    }
+    setSyncStatus("ok","☁️ 同期済み");
+    console.log("[Firestore] Saved kif:",k.kif_id);
+  }catch(e){
+    console.error("[Firestore] pushSingleKifAsync error:",e);
+    setSyncStatus("err","⚠️ 同期エラー");
+  }
 }
 
+// 単一局面メモの即時Firestore保存: users/{uid}/kifs/{kifId}/memos/{memoId}
+async function pushSingleMemoAsync(mKey){
+  if(!fbDb||!currentUser||!navigator.onLine||!memoStore[mKey])return;
+  var m=memoStore[mKey],pu=m.updated_at,fb=window._fb;
+  try{
+    setSyncStatus("ing","☁️ 同期中...");
+    var docId=memoDocId(m.kif_id,m.branch_id,m.ply);
+    var ref=fb.doc(fbDb,"users",currentUser.uid,"kifs",m.kif_id,"memos",docId);
+    await fb.setDoc(ref,{
+      user_id:currentUser.uid,
+      memo_id:docId,
+      kif_id:m.kif_id,
+      branch_id:m.branch_id,
+      ply:m.ply,
+      memo_text:m.memo_text||"",
+      updated_at:pu
+    });
+    if(memoStore[mKey]&&memoStore[mKey].updated_at===pu){
+      memoStore[mKey].dirty=false;
+      saveLocalStores();
+    }
+    setSyncStatus("ok","☁️ 同期済み");
+    console.log("[Firestore] Saved memo:",mKey);
+  }catch(e){
+    console.error("[Firestore] pushSingleMemoAsync error:",e);
+    setSyncStatus("err","⚠️ 同期エラー");
+  }
+}
+
+// 単一練習履歴イベントの即時Firestore保存: users/{uid}/practice_events/{eventId}
+async function pushSinglePracticeEventAsync(ev){
+  if(!fbDb||!currentUser||!navigator.onLine||!ev)return;
+  var fb=window._fb;
+  try{
+    var ref=fb.doc(fbDb,"users",currentUser.uid,"practice_events",ev.event_id);
+    await fb.setDoc(ref,{
+      event_id:ev.event_id,
+      user_id:currentUser.uid,
+      kif_id:ev.kif_id,
+      branch_id:ev.branch_id,
+      total_delta:ev.total_delta,
+      ok_delta:ev.ok_delta,
+      created_at:ev.created_at
+    });
+    if(practiceEvents[ev.event_id])practiceEvents[ev.event_id].synced=true;
+    saveLocalStores();
+    setSyncStatus("ok","☁️ 同期済み");
+    console.log("[Firestore] Saved practice_event:",ev.event_id);
+  }catch(e){
+    console.warn("[Firestore] pushSinglePracticeEventAsync error:",e);
+  }
+}
+
+// Firestore writeBatch 分割コミット補助（500件制限対策）
+async function commitBatchChunks(items,buildFn){
+  if(!items.length||!fbDb)return true;
+  var fb=window._fb,chunkSize=400;
+  for(var i=0;i<items.length;i+=chunkSize){
+    var slice=items.slice(i,i+chunkSize);
+    var batch=fb.writeBatch(fbDb);
+    for(var j=0;j<slice.length;j++)buildFn(batch,slice[j]);
+    await batch.commit();
+  }
+  return true;
+}
+
+// クラウドデータのローカル反映後の非破壊UI更新
+function refreshUIAfterCloudMerge(kChg,curUpd,curDel,mChg,sChg,showUserToast){
+  rebuildBranchStatsFromEvents();
+  saveLocalStores();
+  var midGame=(isR||st>0||isA);
+  if(kChg){
+    var act=getActiveKifList();
+    if(curDel){
+      var nid=act.length?act[0].kif_id:"";uD(nid);
+      if(!midGame){if(nid)lB(kifStore[nid].kif_text,nid);else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";updateMemoUI();rG();}}
+    }else if(!currentKifId&&act.length){
+      var fid=act[0].kif_id;uD(fid);if(!isR)lB(kifStore[fid].kif_text,fid);
+    }else{
+      if(currentKifId&&kifStore[currentKifId])currentKifName=kifStore[currentKifId].title;
+      uD(currentKifId);
+      if(curUpd&&!midGame&&kifStore[currentKifId])lB(kifStore[currentKifId].kif_text,currentKifId);
+    }
+  }
+  if(mChg){
+    var ae=document.activeElement;
+    if(!ae||(ae.id!=="memo-ta-pc"&&ae.id!=="memo-ta-m"))updateMemoUI();
+  }
+  if(sChg&&!isR){
+    var brNow=getBranchesAt(st+1);
+    if(st===0&&brNow.length>=2)showSenteBranchInfo(brNow,1);
+  }
+  setSyncStatus("ok","☁️ 同期済み");
+  if(showUserToast||kChg||mChg||sChg)showToast("☁️ クラウド同期完了");
+}
+
+// 全体マージ同期（起動時・ログイン時・手動同期時・オンライン復帰時）
 async function syncWithCloud(showUserToast){
-  if(!sbClient||!currentUser)return;
-  if(!navigator.onLine){setSyncStatus("err","⚠️ オフライン");return;}
+  if(!fbDb||!currentUser)return;
+  if(!navigator.onLine){setSyncStatus("err","☁️ オフライン");return;}
   if(isSyncing){pendingSync=true;return;}
   isSyncing=true;setSyncStatus("ing","☁️ 同期中...");
-  try{
-    var rK=await sbClient.from("user_kifs").select("*").eq("user_id",currentUser.id);
-    var rM=await sbClient.from("user_kif_memos").select("*").eq("user_id",currentUser.id);
-    var rE=await sbClient.from("user_practice_events").select("*").eq("user_id",currentUser.id);
-    if(rK.error||rM.error||rE.error)throw new Error("Fetch error");
+  var fb=window._fb,uid=currentUser.uid;
 
-    var cK=rK.data||[],cM=rM.data||[],cE=rE.data||[],kChg=false,curUpd=false,curDel=false,mChg=false,sChg=false,ckMap={},cmMap={},ceMap={};
-    for(var i=0;i<cK.length;i++){
-      var ck=cK[i];if(!ck.kif_id)continue;ckMap[ck.kif_id]=ck;
+  try{
+    console.log("[Firestore] Starting full sync for user:",uid);
+    var kSnap=await fb.getDocs(fb.collection(fbDb,"users",uid,"kifs"));
+    var eSnap=await fb.getDocs(fb.collection(fbDb,"users",uid,"practice_events"));
+
+    var kChg=false,curUpd=false,curDel=false,mChg=false,sChg=false;
+    var ckMap={},cmMap={},ceMap={},allKifIds={};
+
+    // 1. KIFマージ (updated_at / deleted_at 比較)
+    kSnap.forEach(function(docSnap){
+      var ck=docSnap.data();if(!ck||!ck.kif_id)return;
+      ckMap[ck.kif_id]=ck;
+      allKifIds[ck.kif_id]=true;
       var lk=kifStore[ck.kif_id],cU=Number(ck.updated_at)||0,cD=ck.deleted_at?Number(ck.deleted_at):null,lU=lk?(Number(lk.updated_at)||0):0;
       if(!lk||cU>lU||(cU===lU&&cD&&!lk.deleted_at)){
         var wDel=lk?!!lk.deleted_at:false,pTx=lk?lk.kif_text:"",pTi=lk?lk.title:"";
@@ -813,75 +1077,224 @@ async function syncWithCloud(showUserToast){
         if(cD){if(!wDel){kChg=true;if(ck.kif_id===currentKifId)curDel=true;}}
         else if(wDel||pTx!==ck.kif_text||pTi!==ck.title){kChg=true;if(ck.kif_id===currentKifId&&pTx!==ck.kif_text)curUpd=true;}
       }
-    }
+    });
+
     var kUp=[];
     for(var kid in kifStore){
       var li=kifStore[kid];if(!li)continue;
+      allKifIds[kid]=true;
       var ci=ckMap[kid],cu2=ci?(Number(ci.updated_at)||0):0;
-      if(li.dirty||!ci||li.updated_at>cu2){if(!li.deleted_at&&!li.kif_text)continue;kUp.push({user_id:currentUser.id,kif_id:li.kif_id,title:li.title||"無題",kif_text:li.kif_text||"",updated_at:li.updated_at,deleted_at:li.deleted_at||null});}
-    }
-    if(kUp.length){var ukR=await sbClient.from("user_kifs").upsert(kUp,{onConflict:"user_id,kif_id"});if(!ukR.error)for(var u=0;u<kUp.length;u++){var uk=kUp[u];if(kifStore[uk.kif_id]&&kifStore[uk.kif_id].updated_at===uk.updated_at)kifStore[uk.kif_id].dirty=false;}}
-
-    for(var m=0;m<cM.length;m++){
-      var cm=cM[m];if(!cm.kif_id||!cm.branch_id||!cm.ply)continue;
-      var mk=cm.kif_id+"::"+cm.branch_id+"::"+cm.ply;cmMap[mk]=cm;
-      var lm=memoStore[mk],cmU=Number(cm.updated_at)||0,lmU=lm?(Number(lm.updated_at)||0):0;
-      if(!lm||cmU>lmU){
-        var pM=lm?lm.memo_text:"";
-        memoStore[mk]={kif_id:cm.kif_id,branch_id:cm.branch_id,ply:Number(cm.ply)||1,memo_text:cm.memo_text||"",updated_at:cmU,dirty:false};
-        if(pM!==(cm.memo_text||""))mChg=true;
+      if(li.dirty||!ci||li.updated_at>cu2){
+        if(!li.deleted_at&&!li.kif_text)continue;
+        kUp.push({user_id:uid,kif_id:li.kif_id,title:li.title||"無題",kif_text:li.kif_text||"",updated_at:li.updated_at,deleted_at:li.deleted_at||null});
       }
     }
+    if(kUp.length){
+      await commitBatchChunks(kUp,function(batch,item){
+        batch.set(fb.doc(fbDb,"users",uid,"kifs",item.kif_id),item);
+      });
+      for(var u=0;u<kUp.length;u++){
+        var uk=kUp[u];
+        if(kifStore[uk.kif_id]&&kifStore[uk.kif_id].updated_at===uk.updated_at)kifStore[uk.kif_id].dirty=false;
+      }
+      console.log("[Firestore] Uploaded kifs:",kUp.length);
+    }
+
+    // 2. 局面メモマージ (users/{uid}/kifs/{kifId}/memos/{memoId} の updated_at 比較)
+    for(var mkLocal in memoStore){
+      if(memoStore[mkLocal]&&memoStore[mkLocal].kif_id)allKifIds[memoStore[mkLocal].kif_id]=true;
+    }
+    var kifIdList=Object.keys(allKifIds);
+    var memoSnaps=await Promise.all(kifIdList.map(function(kIdItem){
+      return fb.getDocs(fb.collection(fbDb,"users",uid,"kifs",kIdItem,"memos"));
+    }));
+
+    for(var msIdx=0;msIdx<memoSnaps.length;msIdx++){
+      memoSnaps[msIdx].forEach(function(docSnap){
+        var cm=docSnap.data();if(!cm||!cm.kif_id||!cm.branch_id||!cm.ply)return;
+        var mk=cm.kif_id+"::"+cm.branch_id+"::"+cm.ply;cmMap[mk]=cm;
+        var lm=memoStore[mk],cmU=Number(cm.updated_at)||0,lmU=lm?(Number(lm.updated_at)||0):0;
+        if(!lm||cmU>lmU){
+          var pM=lm?lm.memo_text:"";
+          memoStore[mk]={kif_id:cm.kif_id,branch_id:cm.branch_id,ply:Number(cm.ply)||1,memo_text:cm.memo_text||"",updated_at:cmU,dirty:false};
+          if(pM!==(cm.memo_text||""))mChg=true;
+        }
+      });
+    }
+
     var mUp=[];
     for(var mk2 in memoStore){
       var lmi=memoStore[mk2];if(!lmi||!lmi.kif_id||!lmi.branch_id)continue;
       var cmi=cmMap[mk2],cmu2=cmi?(Number(cmi.updated_at)||0):0;
-      if(lmi.dirty||!cmi||lmi.updated_at>cmu2)mUp.push({user_id:currentUser.id,kif_id:lmi.kif_id,branch_id:lmi.branch_id,ply:lmi.ply,memo_text:lmi.memo_text||"",updated_at:lmi.updated_at});
+      if(lmi.dirty||!cmi||lmi.updated_at>cmu2){
+        var mId=memoDocId(lmi.kif_id,lmi.branch_id,lmi.ply);
+        mUp.push({user_id:uid,memo_id:mId,kif_id:lmi.kif_id,branch_id:lmi.branch_id,ply:lmi.ply,memo_text:lmi.memo_text||"",updated_at:lmi.updated_at});
+      }
     }
-    if(mUp.length){var umR=await sbClient.from("user_kif_memos").upsert(mUp,{onConflict:"user_id,kif_id,branch_id,ply"});if(!umR.error)for(var w=0;w<mUp.length;w++){var um=mUp[w],mk3=um.kif_id+"::"+um.branch_id+"::"+um.ply;if(memoStore[mk3]&&memoStore[mk3].updated_at===um.updated_at)memoStore[mk3].dirty=false;}}
+    if(mUp.length){
+      await commitBatchChunks(mUp,function(batch,item){
+        batch.set(fb.doc(fbDb,"users",uid,"kifs",item.kif_id,"memos",item.memo_id),item);
+      });
+      for(var w=0;w<mUp.length;w++){
+        var um=mUp[w],mk3=um.kif_id+"::"+um.branch_id+"::"+um.ply;
+        if(memoStore[mk3]&&memoStore[mk3].updated_at===um.updated_at)memoStore[mk3].dirty=false;
+      }
+      console.log("[Firestore] Uploaded memos:",mUp.length);
+    }
 
-    for(var e=0;e<cE.length;e++){
-      var ce=cE[e];if(!ce.event_id||!ce.kif_id||!ce.branch_id)continue;ceMap[ce.event_id]=true;
-      if(!practiceEvents[ce.event_id]){practiceEvents[ce.event_id]={event_id:ce.event_id,kif_id:ce.kif_id,branch_id:ce.branch_id,total_delta:Number(ce.total_delta)||1,ok_delta:Number(ce.ok_delta)||0,created_at:Number(ce.created_at)||0,synced:true};sChg=true;}
-      else practiceEvents[ce.event_id].synced=true;
-    }
+    // 3. 練習履歴イベントマージ (users/{uid}/practice_events/{eventId} の和集合)
+    eSnap.forEach(function(docSnap){
+      var ce=docSnap.data();if(!ce||!ce.event_id||!ce.kif_id||!ce.branch_id)return;
+      ceMap[ce.event_id]=true;
+      if(!practiceEvents[ce.event_id]){
+        practiceEvents[ce.event_id]={
+          event_id:ce.event_id,
+          kif_id:ce.kif_id,
+          branch_id:ce.branch_id,
+          total_delta:Number(ce.total_delta)||1,
+          ok_delta:Number(ce.ok_delta)||0,
+          created_at:Number(ce.created_at)||0,
+          synced:true
+        };
+        sChg=true;
+      }else{
+        practiceEvents[ce.event_id].synced=true;
+      }
+    });
+
     var eUp=[];
     for(var pid in practiceEvents){
       var pev=practiceEvents[pid];if(!pev||!pev.kif_id||!pev.branch_id)continue;
-      if(!pev.synced||!ceMap[pid])eUp.push({event_id:pev.event_id,user_id:currentUser.id,kif_id:pev.kif_id,branch_id:pev.branch_id,total_delta:pev.total_delta,ok_delta:pev.ok_delta,created_at:pev.created_at});
+      if(!pev.synced||!ceMap[pid]){
+        eUp.push({
+          event_id:pev.event_id,
+          user_id:uid,
+          kif_id:pev.kif_id,
+          branch_id:pev.branch_id,
+          total_delta:pev.total_delta,
+          ok_delta:pev.ok_delta,
+          created_at:pev.created_at
+        });
+      }
     }
-    if(eUp.length){var ueR=await sbClient.from("user_practice_events").upsert(eUp,{onConflict:"event_id"});if(!ueR.error)for(var z=0;z<eUp.length;z++){var eid2=eUp[z].event_id;if(practiceEvents[eid2])practiceEvents[eid2].synced=true;}}
+    if(eUp.length){
+      await commitBatchChunks(eUp,function(batch,item){
+        batch.set(fb.doc(fbDb,"users",uid,"practice_events",item.event_id),item);
+      });
+      for(var z=0;z<eUp.length;z++){
+        var eid2=eUp[z].event_id;
+        if(practiceEvents[eid2])practiceEvents[eid2].synced=true;
+      }
+      console.log("[Firestore] Uploaded practice_events:",eUp.length);
+    }
 
-    rebuildBranchStatsFromEvents();saveLocalStores();
-    var midGame=(isR||st>0||isA);
-    if(kChg){
-      var act=getActiveKifList();
-      if(curDel){
-        var nid=act.length?act[0].kif_id:"";uD(nid);
-        if(!midGame){if(nid)lB(kifStore[nid].kif_text,nid);else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";updateMemoUI();rG();}}
-      }else if(!currentKifId&&act.length){var fid=act[0].kif_id;uD(fid);if(!isR)lB(kifStore[fid].kif_text,fid);}
-      else{if(currentKifId&&kifStore[currentKifId])currentKifName=kifStore[currentKifId].title;uD(currentKifId);if(curUpd&&!midGame&&kifStore[currentKifId])lB(kifStore[currentKifId].kif_text,currentKifId);}
+    refreshUIAfterCloudMerge(kChg,curUpd,curDel,mChg,sChg,showUserToast);
+  }catch(err){
+    console.error("[Firestore] syncWithCloud error:",err);
+    setSyncStatus("err","⚠️ 同期エラー");
+  }finally{
+    isSyncing=false;
+    if(pendingSync){
+      pendingSync=false;
+      syncWithCloud(false);
     }
-    if(mChg){var ae=document.activeElement;if(!ae||(ae.id!=="memo-ta-pc"&&ae.id!=="memo-ta-m"))updateMemoUI();}
-    if(sChg&&!isR){var brNow=getBranchesAt(st+1);if(st===0&&brNow.length>=2)showSenteBranchInfo(brNow,1);}
-    setSyncStatus("ok","☁️ 同期済み");
-    if(showUserToast||kChg||mChg||sChg)showToast("☁️ クラウド同期完了");
-  }catch(err){setSyncStatus("err","⚠️ 同期エラー");}
-  finally{isSyncing=false;if(pendingSync){pendingSync=false;syncWithCloud(false);}}
+  }
 }
 
-function setupRealtimeSubscription(){
-  if(!sbClient||!currentUser)return;
-  if(realtimeChan){try{sbClient.removeChannel(realtimeChan);}catch(e){}realtimeChan=null;}
+// KIF単位のサブコレクション users/{uid}/kifs/{kifId}/memos リアルタイム監視
+function ensureMemoRealtimeForKif(kifId){
+  if(!fbDb||!currentUser||!kifId||memoRealtimeUnsubs[kifId])return;
+  var fb=window._fb,uid=currentUser.uid;
   try{
-    var f="user_id=eq."+currentUser.id,cb=function(){syncWithCloud(false);};
-    realtimeChan=sbClient.channel("shogi_sync_"+currentUser.id)
-      .on("postgres_changes",{event:"*",schema:"public",table:"user_kifs",filter:f},cb)
-      .on("postgres_changes",{event:"*",schema:"public",table:"user_kif_memos",filter:f},cb)
-      .on("postgres_changes",{event:"*",schema:"public",table:"user_practice_events",filter:f},cb)
-      .subscribe();
-  }catch(e){}
+    memoRealtimeUnsubs[kifId]=fb.onSnapshot(fb.collection(fbDb,"users",uid,"kifs",kifId,"memos"),function(snap){
+      if(snap.metadata.hasPendingWrites)return;
+      var mChg=false;
+      snap.docChanges().forEach(function(chg){
+        var cm=chg.doc.data();if(!cm||!cm.kif_id||!cm.branch_id||!cm.ply)return;
+        var mk=cm.kif_id+"::"+cm.branch_id+"::"+cm.ply;
+        var lm=memoStore[mk],cmU=Number(cm.updated_at)||0,lmU=lm?(Number(lm.updated_at)||0):0;
+        if(!lm||cmU>lmU){
+          var pM=lm?lm.memo_text:"";
+          memoStore[mk]={kif_id:cm.kif_id,branch_id:cm.branch_id,ply:Number(cm.ply)||1,memo_text:cm.memo_text||"",updated_at:cmU,dirty:false};
+          if(pM!==(cm.memo_text||""))mChg=true;
+        }
+      });
+      if(mChg){
+        console.log("[Firestore Realtime] Memo update received for kif:",kifId);
+        refreshUIAfterCloudMerge(false,false,false,true,false,false);
+      }
+    },function(err){console.warn("[Firestore Realtime] memos listener error:",err);});
+  }catch(e){
+    console.warn("[Firestore Realtime] ensureMemoRealtimeForKif error:",e);
+  }
 }
+
+// Firestore onSnapshot リアルタイム監視（無限同期ループ防止設計：読み取り反映のみ行い、再書き込みは行わない）
+function setupRealtimeSubscription(){
+  clearRealtimeSubscriptions();
+  if(!fbDb||!currentUser)return;
+  var fb=window._fb,uid=currentUser.uid;
+  try{
+    // 1. KIFリアルタイム監視: users/{uid}/kifs/{kifId}
+    var unsubKifs=fb.onSnapshot(fb.collection(fbDb,"users",uid,"kifs"),function(snap){
+      snap.docChanges().forEach(function(chg){
+        var d=chg.doc.data();
+        if(d&&d.kif_id)ensureMemoRealtimeForKif(d.kif_id);
+      });
+      if(snap.metadata.hasPendingWrites)return;
+      var kChg=false,curUpd=false,curDel=false;
+      snap.docChanges().forEach(function(chg){
+        var ck=chg.doc.data();if(!ck||!ck.kif_id)return;
+        var lk=kifStore[ck.kif_id],cU=Number(ck.updated_at)||0,cD=ck.deleted_at?Number(ck.deleted_at):null,lU=lk?(Number(lk.updated_at)||0):0;
+        if(!lk||cU>lU||(cU===lU&&cD&&!lk.deleted_at)){
+          var wDel=lk?!!lk.deleted_at:false,pTx=lk?lk.kif_text:"",pTi=lk?lk.title:"";
+          kifStore[ck.kif_id]={kif_id:ck.kif_id,title:ck.title||"無題",kif_text:ck.kif_text||"",updated_at:cU,deleted_at:cD,dirty:false};
+          if(cD){if(!wDel){kChg=true;if(ck.kif_id===currentKifId)curDel=true;}}
+          else if(wDel||pTx!==ck.kif_text||pTi!==ck.title){kChg=true;if(ck.kif_id===currentKifId&&pTx!==ck.kif_text)curUpd=true;}
+        }
+      });
+      if(kChg){
+        console.log("[Firestore Realtime] KIF update received");
+        refreshUIAfterCloudMerge(true,curUpd,curDel,false,false,false);
+      }
+    },function(err){console.warn("[Firestore Realtime] kifs listener error:",err);});
+
+    // 2. 局面メモリアルタイム監視: users/{uid}/kifs/{kifId}/memos/{memoId}
+    for(var kid in kifStore){
+      ensureMemoRealtimeForKif(kid);
+    }
+
+    // 3. 練習履歴イベントリアルタイム監視: users/{uid}/practice_events/{eventId}
+    var unsubEvents=fb.onSnapshot(fb.collection(fbDb,"users",uid,"practice_events"),function(snap){
+      if(snap.metadata.hasPendingWrites)return;
+      var sChg=false;
+      snap.docChanges().forEach(function(chg){
+        var ce=chg.doc.data();if(!ce||!ce.event_id||!ce.kif_id||!ce.branch_id)return;
+        if(!practiceEvents[ce.event_id]){
+          practiceEvents[ce.event_id]={
+            event_id:ce.event_id,
+            kif_id:ce.kif_id,
+            branch_id:ce.branch_id,
+            total_delta:Number(ce.total_delta)||1,
+            ok_delta:Number(ce.ok_delta)||0,
+            created_at:Number(ce.created_at)||0,
+            synced:true
+          };
+          sChg=true;
+        }
+      });
+      if(sChg){
+        console.log("[Firestore Realtime] Practice event received");
+        refreshUIAfterCloudMerge(false,false,false,false,true,false);
+      }
+    },function(err){console.warn("[Firestore Realtime] practice_events listener error:",err);});
+
+    realtimeUnsubs.push(unsubKifs,unsubEvents);
+  }catch(e){
+    console.error("[Firestore Realtime] setup error:",e);
+  }
+}
+
 function readDroppedKifFile(file){
   var rdr=new FileReader();
   rdr.onload=function(ev){
@@ -893,8 +1306,8 @@ function readDroppedKifFile(file){
   rdr.readAsArrayBuffer(file);
 }
 
-window.addEventListener("online",function(){if(sbClient&&currentUser)syncWithCloud(true);});
-window.addEventListener("offline",function(){if(sbClient&&currentUser)setSyncStatus("err","⚠️ オフライン");});
+window.addEventListener("online",function(){if(fbDb&&currentUser)syncWithCloud(true);});
+window.addEventListener("offline",function(){if(fbDb&&currentUser)setSyncStatus("err","☁️ オフライン");});
 window.addEventListener("dragover",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="flex";});
 window.addEventListener("dragleave",function(e){if(e.clientX<=0||e.clientY<=0){var d=document.getElementById("d-ovl");if(d)d.style.display="none";}});
 window.addEventListener("drop",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="none";var f=e.dataTransfer.files[0];if(f)readDroppedKifFile(f);});
@@ -902,7 +1315,8 @@ window.addEventListener("drop",function(e){e.preventDefault();var d=document.get
 initB();loadAndMigrateLocalData();
 var initList=getActiveKifList(),firstKifId=initList.length?initList[0].kif_id:"";
 uD(firstKifId);if(firstKifId)lB(kifStore[firstKifId].kif_text,firstKifId);else{rawMoves=[];rG();}
-initSupabaseClient();
+if(window._fb)initFirebaseClient(false);
+else window.addEventListener("fb-sdk-ready",function(){initFirebaseClient(false);});
 </script>
 </body>
 </html>
