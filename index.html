@@ -196,9 +196,19 @@ function memoDocId(kifId,branchId,ply){
   return encodeURIComponent(kifId)+"__"+encodeURIComponent(branchId)+"__"+ply;
 }
 function saveLocalStores(){
-  try{localStorage.setItem("skifs_kif_store_v2",JSON.stringify(kifStore));localStorage.setItem("skifs_memo_store_v2",JSON.stringify(memoStore));localStorage.setItem("skifs_stat_events_v2",JSON.stringify(practiceEvents));}catch(e){}
+  try{
+    localStorage.setItem("skifs_kif_store_v2",JSON.stringify(kifStore));
+    localStorage.setItem("skifs_memo_store_v2",JSON.stringify(memoStore));
+    localStorage.setItem("skifs_stat_events_v2",JSON.stringify(practiceEvents));
+  }catch(e){
+    alert("ローカルストレージへの保存に失敗しました。容量不足かプライベートブラウズの可能性があります。");
+  }
   var lk={};for(var id in kifStore){var k=kifStore[id];if(k&&!k.deleted_at&&k.kif_text)lk[k.title]=k.kif_text;}
-  skifs=lk;try{localStorage.setItem("skifs_min",JSON.stringify(skifs));localStorage.setItem("skifs_bstat",JSON.stringify(branchStats));}catch(e){}
+  skifs=lk;
+  try{
+    localStorage.setItem("skifs_min",JSON.stringify(skifs));
+    localStorage.setItem("skifs_bstat",JSON.stringify(branchStats));
+  }catch(e){}
 }
 function rebuildBranchStatsFromEvents(){
   var ns={};
@@ -304,7 +314,14 @@ function sApp(){
   if(tx.trim()&&regK(t,tx)){document.getElementById("kt").value="";document.getElementById("kx").value="";cM("modal");}
 }
 function regK(t,tx,fId){
-  var tr=parseFullKif(tx);if(!tr.length||!tr[0].fullSeq.length){alert("認識失敗");return false;}
+  var tr;
+  try {
+    tr=parseFullKif(tx);
+    if(!tr.length||!tr[0].fullSeq.length) throw new Error("有効な手順が見つかりません。");
+  } catch(e) {
+    alert("棋譜の解析に失敗しました。形式を確認してください。\n詳細: " + e.message);
+    return false;
+  }
   var kId=fId||genUuid(),now=Date.now();
   kifStore[kId]={kif_id:kId,title:t,kif_text:tx,updated_at:now,deleted_at:null,dirty:true};
   saveLocalStores();uD(kId);lB(tx,kId);pushSingleKifAsync(kId);ensureMemoRealtimeForKif(kId);return true;
@@ -379,8 +396,16 @@ function parseFullKif(tx){
     }
     for(var j=0;j<b.lines.length;j++){
       var s=b.lines[j];
-      if(s.indexOf("*")===0){if(seq.length){var lm=seq[seq.length-1],ct=s.substring(1);lm.comment=lm.comment?(lm.comment+"\n"+ct):ct;}}
-      else{var pm=parseLineMove(s,px,py);if(pm){px=pm.tx;py=pm.ty;seq.push(pm);}}
+      if(s.indexOf("*")===0){
+        if(seq.length){var lm=seq[seq.length-1],ct=s.substring(1);lm.comment=lm.comment?(lm.comment+"\n"+ct):ct;}
+      }else{
+        var pm=parseLineMove(s,px,py);
+        if(pm){
+          px=pm.tx;py=pm.ty;seq.push(pm);
+        }else{
+          throw new Error("「" + s + "」の行を解析できませんでした。");
+        }
+      }
     }
     b.fullSeq=seq;b.branchId=(i===0)?"br_main":computeBranchId(b.startPly,seq);
   }
@@ -391,7 +416,8 @@ function getFullSequenceForBlock(idx){return parsedTree[idx]?parsedTree[idx].ful
 function buildSequenceFromBlock(idx){if(!parsedTree.length)return;currentBlockIndex=(idx<0||idx>=parsedTree.length)?0:idx;rawMoves=getFullSequenceForBlock(currentBlockIndex);}
 function lB(tx,kId){
   cancelOppTimer();if(kId&&kifStore[kId]){currentKifId=kId;currentKifName=kifStore[kId].title;}
-  parsedTree=parseFullKif(tx);if(!parsedTree.length){parsedTree=[];rawMoves=[];rG();return;}
+  try{ parsedTree=parseFullKif(tx); }catch(e){ parsedTree=[]; }
+  if(!parsedTree.length){parsedTree=[];rawMoves=[];rG();return;}
   buildSequenceFromBlock(0);rG();
 }
 function getBranchesAt(ply){
@@ -558,37 +584,46 @@ function renderBoard(wK){
   var tb=document.getElementById("tb");tb.innerHTML="";
   var viewGote = isGoteMode;
   
-  var ys = viewGote ? 9 : 1, ye = viewGote ? 1 : 9, yd = viewGote ? -1 : 1;
-  var xs = viewGote ? 1 : 9, xe = viewGote ? 9 : 1, xd = viewGote ? 1 : -1;
-
-  for(var y=ys; viewGote ? y>=ye : y<=ye; y+=yd){
+  for(var yi=0; yi<9; yi++){
+    var y = viewGote ? 9 - yi : yi + 1;
     var tr=document.createElement("tr");
-    for(var x=xs; viewGote ? x<=xe : x>=xe; x+=xd){
+    for(var xi=0; xi<9; xi++){
+      var x = viewGote ? xi + 1 : 9 - xi;
       var td=document.createElement("td"),k=x+","+y;td.id="c_"+k;
-      if(sF===k)td.className="sel";if(hI&&hI.from===k)td.className="h-from";if(hI&&hI.to===k)td.className="h-to";if(wK===k)td.className="w-cell";
+      
+      td.className = "";
+      if(sF===k) td.classList.add("sel");
+      if(hI&&hI.from===k) td.classList.add("h-from");
+      if(hI&&hI.to===k) td.classList.add("h-to");
+      if(wK===k) td.classList.add("w-cell");
+      
       var p=bS[k];if(p){
         var sp=document.createElement("span");sp.className="piece";sp.textContent=p.t;
-        if(viewGote ? !p.g : p.g)td.className+=" gote";
+        if(viewGote ? !p.g : p.g) td.classList.add("gote");
         td.appendChild(sp);
       }
       (function(cx,cy){td.onclick=function(){onC(cx,cy);};})(x,y);tr.appendChild(td);
     }
     tb.appendChild(tr);
   }
+
   var sh=document.getElementById("sh"),gh=document.getElementById("gh");
   sh.innerHTML='<span style="font-size:11px;font-weight:bold;">'+(viewGote?"後手:":"先手:")+'</span>';
   gh.innerHTML='<span style="font-size:11px;font-weight:bold;">'+(viewGote?"先手:":"後手:")+'</span>';
   
   for(var sp in sHnd)if(sHnd[sp]>0)(function(pn){
-    var d=document.createElement("div");d.id="hs_"+pn;d.className="hp"+(sF===("h_"+pn)?" sel":"");
-    if(viewGote) d.className+=" gote";
+    var d=document.createElement("div");d.id="hs_"+pn;d.className="hp";
+    if(sF===("h_"+pn)) d.classList.add("sel");
+    if(viewGote) d.classList.add("gote");
     var ps=document.createElement("span");ps.className="piece";ps.textContent=pn;d.appendChild(ps);
     if(sHnd[pn]>1){var cs=document.createElement("span");cs.className="hcnt";cs.textContent=sHnd[pn];d.appendChild(cs);}
     d.onclick=function(){if(!isA&&(!isR ? !viewGote : rTurn===0)){closeBSheet();hI=null;sF=(sF===("h_"+pn))?null:("h_"+pn);renderBoard();}};
     (viewGote?gh:sh).appendChild(d);
   })(sp);
   for(var gp in gHnd)if(gHnd[gp]>0)(function(gpn){
-    var d=document.createElement("div");d.id="hg_"+gpn;d.className="hp"+(viewGote?"":" gote")+(sF===("h_g_"+gpn)?" sel":"");
+    var d=document.createElement("div");d.id="hg_"+gpn;d.className="hp";
+    if(!viewGote) d.classList.add("gote");
+    if(sF===("h_g_"+gpn)) d.classList.add("sel");
     var ps=document.createElement("span");ps.className="piece";ps.textContent=gpn;d.appendChild(ps);
     if(gHnd[gpn]>1){var cs=document.createElement("span");cs.className="hcnt";cs.textContent=gHnd[gpn];d.appendChild(cs);}
     d.onclick=function(){if(!isA&&(!isR ? viewGote : rTurn===1)){closeBSheet();hI=null;sF=(sF===("h_g_"+gpn))?null:("h_g_"+gpn);renderBoard();}};
@@ -683,7 +718,9 @@ function onC(x,y){
     if(!bStatDone&&targetBranch){saveBranchStat(currentKifId,targetBranch,!hFail);bStatDone=true;}
     if(!hFail)cCnt++;
     pt=pro(pt,exp.name,isD);if(!isD)delete bS[from];renderBoard();
+    var aSt = st;
     anim(from,to,pt,isG?1:0,function(){
+      if(st !== aSt) return;
       if(bS[to]){var cap=unp[bS[to].t]||bS[to].t;if(isG)gHnd[cap]=(gHnd[cap]||0)+1;else sHnd[cap]=(sHnd[cap]||0)+1;}
       if(isD){if(isG)gHnd[pt]--;else sHnd[pt]--;}
       bS[to]={t:pt,g:isG?1:0};st++;hFail=false;uScr();renderBoard();updateMemoUI();
@@ -707,9 +744,17 @@ function onC(x,y){
   }else{
     if(!bStatDone&&targetBranch){saveBranchStat(currentKifId,targetBranch,false);bStatDone=true;}
     hFail=true;isA=true;var op=isD?null:bS[from];if(!isD)delete bS[from];renderBoard();
+    var aSt2 = st;
     anim(from,to,pt,isG?1:0,function(){
+      if(st !== aSt2) return;
       setStHtml('<span style="color:#c62828;">× 定跡外れ！</span>');renderBoard(to);
-      setTimeout(function(){anim(to,from,pt,isG?1:0,function(){if(!isD)bS[from]=op;isA=false;renderBoard();});},450);
+      setTimeout(function(){
+        if(st !== aSt2) return;
+        anim(to,from,pt,isG?1:0,function(){
+          if(st !== aSt2) return;
+          if(!isD)bS[from]=op;isA=false;renderBoard();
+        });
+      },450);
     });
   }
 }
@@ -757,7 +802,11 @@ function hRec(x,y,k){
     if(pn==="歩"){for(var cy=1;cy<=9;cy++){var cp=bS[x+","+cy];if(cp&&cp.g===(isG?1:0)&&cp.t==="歩"){alert("二歩になるため打てません");renderBoard();return;}}}
     isA=true;hnd[pn]--;bS[k]={t:pn,g:isG?1:0};
     var mN=zn[x]+kn[y]+pn+"打",mv={ply:nextPly,from:"h_"+pn,to:k,name:mN,tx:x,ty:y,rawLine:nextPly+" "+mN,comment:""};
-    anim(from,k,pn,isG?1:0,function(){recordMoveToTree(mv);isA=false;uRSt();renderBoard();});
+    var aPly = rPly;
+    anim(from,k,pn,isG?1:0,function(){
+      if(rPly !== aPly) return;
+      recordMoveToTree(mv);isA=false;uRSt();renderBoard();
+    });
   }else{
     if(!bS[from]){renderBoard();return;}
     pn=bS[from].t;fc=from.replace(",","");
@@ -766,7 +815,9 @@ function hRec(x,y,k){
     var dP=mustP?true:(cP&&confirm("成りますか？")),fn=dP?(pmap[pn]||"成"+pn):pn,mc=zn[x]+kn[y]+pn+(dP?"成":"");
     var mv2={ply:nextPly,from:from,to:k,name:mc,tx:x,ty:y,rawLine:nextPly+" "+mc+"("+fc+")",comment:""};
     isA=true;delete bS[from];
+    var aPly2 = rPly;
     anim(from,k,fn,isG?1:0,function(){
+      if(rPly !== aPly2) return;
       if(bS[k]){var c=unp[bS[k].t]||bS[k].t;if(isG)gHnd[c]=(gHnd[c]||0)+1;else sHnd[c]=(sHnd[c]||0)+1;}
       bS[k]={t:fn,g:isG?1:0};recordMoveToTree(mv2);isA=false;uRSt();renderBoard();
     });
@@ -813,7 +864,9 @@ function sH(){
   setStHtml('<span style="color:#0277bd;">💡 正解: 【'+turnMark+escapeHtml(rawMoves[st].name)+'】</span>');renderBoard();
 }
 function rG(){
-  cancelOppTimer();closeBSheet();st=0;sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;currentPracticeBranch=null;bStatDone=false;
+  cancelOppTimer();closeBSheet();
+  var prevA = isA;
+  st=0;sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;currentPracticeBranch=null;bStatDone=false;
   if(parsedTree.length)buildSequenceFromBlock(0);initB();uScr();renderBoard();
   if(rawMoves.length){
     var br=getBranchesAt(1);
@@ -1091,4 +1144,297 @@ async function pushSinglePracticeEventAsync(ev){
       branch_id:ev.branch_id,
       total_delta:ev.total_delta,
       ok_delta:ev.ok_delta,
-      created_at:ev
+      created_at:ev.created_at
+    });
+    if(practiceEvents[ev.event_id])practiceEvents[ev.event_id].synced=true;
+    saveLocalStores();
+    setSyncStatus("ok","☁️ 同期済み");
+  }catch(e){}
+}
+
+async function commitBatchChunks(items,buildFn){
+  if(!items.length||!fbDb)return true;
+  var fb=window._fb,chunkSize=400;
+  for(var i=0;i<items.length;i+=chunkSize){
+    var slice=items.slice(i,i+chunkSize);
+    var batch=fb.writeBatch(fbDb);
+    for(var j=0;j<slice.length;j++)buildFn(batch,slice[j]);
+    await batch.commit();
+  }
+  return true;
+}
+
+function refreshUIAfterCloudMerge(kChg,curUpd,curDel,mChg,sChg,showUserToast){
+  rebuildBranchStatsFromEvents();
+  saveLocalStores();
+  var midGame=(isR||st>0||isA);
+  if(kChg){
+    var act=getActiveKifList();
+    if(curDel){
+      var nid=act.length?act[0].kif_id:"";uD(nid);
+      if(!midGame){if(nid)lB(kifStore[nid].kif_text,nid);else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";updateMemoUI();rG();}}
+    }else if(!currentKifId&&act.length){
+      var fid=act[0].kif_id;uD(fid);if(!isR)lB(kifStore[fid].kif_text,fid);
+    }else{
+      if(currentKifId&&kifStore[currentKifId])currentKifName=kifStore[currentKifId].title;
+      uD(currentKifId);
+      if(curUpd&&!midGame&&kifStore[currentKifId])lB(kifStore[currentKifId].kif_text,currentKifId);
+    }
+  }
+  if(mChg){
+    var ae=document.activeElement;
+    if(!ae||(ae.id!=="memo-ta-pc"&&ae.id!=="memo-ta-m"))updateMemoUI();
+  }
+  if(sChg&&!isR){
+    var brNow=getBranchesAt(st+1);
+    var isMyTurn = (!isGoteMode && st%2===0) || (isGoteMode && st%2===1);
+    if(st===0&&brNow.length>=2&&isMyTurn)showBranchInfo(brNow,1);
+  }
+  setSyncStatus("ok","☁️ 同期済み");
+  if(showUserToast||kChg||mChg||sChg)showToast("☁️ クラウド同期完了");
+}
+
+async function syncWithCloud(showUserToast){
+  if(!fbDb||!currentUser)return;
+  if(!navigator.onLine){setSyncStatus("err","☁️ オフライン");return;}
+  if(isSyncing){pendingSync=true;return;}
+  isSyncing=true;setSyncStatus("ing","☁️ 同期中...");
+  var fb=window._fb,uid=currentUser.uid;
+
+  try{
+    var kSnap=await fb.getDocs(fb.collection(fbDb,"users",uid,"kifs"));
+    var eSnap=await fb.getDocs(fb.collection(fbDb,"users",uid,"practice_events"));
+
+    var kChg=false,curUpd=false,curDel=false,mChg=false,sChg=false;
+    var ckMap={},cmMap={},ceMap={},allKifIds={};
+
+    kSnap.forEach(function(docSnap){
+      var ck=docSnap.data();if(!ck||!ck.kif_id)return;
+      ckMap[ck.kif_id]=ck;
+      allKifIds[ck.kif_id]=true;
+      var lk=kifStore[ck.kif_id],cU=Number(ck.updated_at)||0,cD=ck.deleted_at?Number(ck.deleted_at):null,lU=lk?(Number(lk.updated_at)||0):0;
+      if(!lk||cU>lU||(cU===lU&&cD&&!lk.deleted_at)){
+        var wDel=lk?!!lk.deleted_at:false,pTx=lk?lk.kif_text:"",pTi=lk?lk.title:"";
+        kifStore[ck.kif_id]={kif_id:ck.kif_id,title:ck.title||"無題",kif_text:ck.kif_text||"",updated_at:cU,deleted_at:cD,dirty:false};
+        if(cD){if(!wDel){kChg=true;if(ck.kif_id===currentKifId)curDel=true;}}
+        else if(wDel||pTx!==ck.kif_text||pTi!==ck.title){kChg=true;if(ck.kif_id===currentKifId&&pTx!==ck.kif_text)curUpd=true;}
+      }
+    });
+
+    var kUp=[];
+    for(var kid in kifStore){
+      var li=kifStore[kid];if(!li)continue;
+      allKifIds[kid]=true;
+      var ci=ckMap[kid],cu2=ci?(Number(ci.updated_at)||0):0;
+      if(li.dirty||!ci||li.updated_at>cu2){
+        if(!li.deleted_at&&!li.kif_text)continue;
+        kUp.push({user_id:uid,kif_id:li.kif_id,title:li.title||"無題",kif_text:li.kif_text||"",updated_at:li.updated_at,deleted_at:li.deleted_at||null});
+      }
+    }
+    if(kUp.length){
+      await commitBatchChunks(kUp,function(batch,item){
+        batch.set(fb.doc(fbDb,"users",uid,"kifs",item.kif_id),item);
+      });
+      for(var u=0;u<kUp.length;u++){
+        var uk=kUp[u];
+        if(kifStore[uk.kif_id]&&kifStore[uk.kif_id].updated_at===uk.updated_at)kifStore[uk.kif_id].dirty=false;
+      }
+    }
+
+    for(var mkLocal in memoStore){
+      if(memoStore[mkLocal]&&memoStore[mkLocal].kif_id)allKifIds[memoStore[mkLocal].kif_id]=true;
+    }
+    var kifIdList=Object.keys(allKifIds);
+    var memoSnaps=await Promise.all(kifIdList.map(function(kIdItem){
+      return fb.getDocs(fb.collection(fbDb,"users",uid,"kifs",kIdItem,"memos"));
+    }));
+
+    for(var msIdx=0;msIdx<memoSnaps.length;msIdx++){
+      memoSnaps[msIdx].forEach(function(docSnap){
+        var cm=docSnap.data();if(!cm||!cm.kif_id||!cm.branch_id||!cm.ply)return;
+        var mk=cm.kif_id+"::"+cm.branch_id+"::"+cm.ply;cmMap[mk]=cm;
+        var lm=memoStore[mk],cmU=Number(cm.updated_at)||0,lmU=lm?(Number(lm.updated_at)||0):0;
+        if(!lm||cmU>lmU){
+          var pM=lm?lm.memo_text:"";
+          memoStore[mk]={kif_id:cm.kif_id,branch_id:cm.branch_id,ply:Number(cm.ply)||1,memo_text:cm.memo_text||"",updated_at:cmU,dirty:false};
+          if(pM!==(cm.memo_text||""))mChg=true;
+        }
+      });
+    }
+
+    var mUp=[];
+    for(var mk2 in memoStore){
+      var lmi=memoStore[mk2];if(!lmi||!lmi.kif_id||!lmi.branch_id)continue;
+      var cmi=cmMap[mk2],cmu2=cmi?(Number(cmi.updated_at)||0):0;
+      if(lmi.dirty||!cmi||lmi.updated_at>cmu2){
+        var mId=memoDocId(lmi.kif_id,lmi.branch_id,lmi.ply);
+        mUp.push({user_id:uid,memo_id:mId,kif_id:lmi.kif_id,branch_id:lmi.branch_id,ply:lmi.ply,memo_text:lmi.memo_text||"",updated_at:lmi.updated_at});
+      }
+    }
+    if(mUp.length){
+      await commitBatchChunks(mUp,function(batch,item){
+        batch.set(fb.doc(fbDb,"users",uid,"kifs",item.kif_id,"memos",item.memo_id),item);
+      });
+      for(var w=0;w<mUp.length;w++){
+        var um=mUp[w],mk3=um.kif_id+"::"+um.branch_id+"::"+um.ply;
+        if(memoStore[mk3]&&memoStore[mk3].updated_at===um.updated_at)memoStore[mk3].dirty=false;
+      }
+    }
+
+    eSnap.forEach(function(docSnap){
+      var ce=docSnap.data();if(!ce||!ce.event_id||!ce.kif_id||!ce.branch_id)return;
+      ceMap[ce.event_id]=true;
+      if(!practiceEvents[ce.event_id]){
+        practiceEvents[ce.event_id]={
+          event_id:ce.event_id,
+          kif_id:ce.kif_id,
+          branch_id:ce.branch_id,
+          total_delta:Number(ce.total_delta)||1,
+          ok_delta:Number(ce.ok_delta)||0,
+          created_at:Number(ce.created_at)||0,
+          synced:true
+        };
+        sChg=true;
+      }else{
+        practiceEvents[ce.event_id].synced=true;
+      }
+    });
+
+    var eUp=[];
+    for(var pid in practiceEvents){
+      var pev=practiceEvents[pid];if(!pev||!pev.kif_id||!pev.branch_id)continue;
+      if(!pev.synced||!ceMap[pid]){
+        eUp.push({
+          event_id:pev.event_id,
+          user_id:uid,
+          kif_id:pev.kif_id,
+          branch_id:pev.branch_id,
+          total_delta:pev.total_delta,
+          ok_delta:pev.ok_delta,
+          created_at:pev.created_at
+        });
+      }
+    }
+    if(eUp.length){
+      await commitBatchChunks(eUp,function(batch,item){
+        batch.set(fb.doc(fbDb,"users",uid,"practice_events",item.event_id),item);
+      });
+      for(var z=0;z<eUp.length;z++){
+        var eid2=eUp[z].event_id;
+        if(practiceEvents[eid2])practiceEvents[eid2].synced=true;
+      }
+    }
+
+    refreshUIAfterCloudMerge(kChg,curUpd,curDel,mChg,sChg,showUserToast);
+  }catch(err){
+    setSyncStatus("err","⚠️ 同期エラー");
+  }finally{
+    isSyncing=false;
+    if(pendingSync){
+      pendingSync=false;
+      syncWithCloud(false);
+    }
+  }
+}
+
+function ensureMemoRealtimeForKif(kifId){
+  if(!fbDb||!currentUser||!kifId||memoRealtimeUnsubs[kifId])return;
+  var fb=window._fb,uid=currentUser.uid;
+  try{
+    memoRealtimeUnsubs[kifId]=fb.onSnapshot(fb.collection(fbDb,"users",uid,"kifs",kifId,"memos"),function(snap){
+      if(snap.metadata.hasPendingWrites)return;
+      var mChg=false;
+      snap.docChanges().forEach(function(chg){
+        var cm=chg.doc.data();if(!cm||!cm.kif_id||!cm.branch_id||!cm.ply)return;
+        var mk=cm.kif_id+"::"+cm.branch_id+"::"+cm.ply;
+        var lm=memoStore[mk],cmU=Number(cm.updated_at)||0,lmU=lm?(Number(lm.updated_at)||0):0;
+        if(!lm||cmU>lmU){
+          var pM=lm?lm.memo_text:"";
+          memoStore[mk]={kif_id:cm.kif_id,branch_id:cm.branch_id,ply:Number(cm.ply)||1,memo_text:cm.memo_text||"",updated_at:cmU,dirty:false};
+          if(pM!==(cm.memo_text||""))mChg=true;
+        }
+      });
+      if(mChg)refreshUIAfterCloudMerge(false,false,false,true,false,false);
+    },function(err){});
+  }catch(e){}
+}
+
+function setupRealtimeSubscription(){
+  clearRealtimeSubscriptions();
+  if(!fbDb||!currentUser)return;
+  var fb=window._fb,uid=currentUser.uid;
+  try{
+    var unsubKifs=fb.onSnapshot(fb.collection(fbDb,"users",uid,"kifs"),function(snap){
+      snap.docChanges().forEach(function(chg){
+        var d=chg.doc.data();
+        if(d&&d.kif_id)ensureMemoRealtimeForKif(d.kif_id);
+      });
+      if(snap.metadata.hasPendingWrites)return;
+      var kChg=false,curUpd=false,curDel=false;
+      snap.docChanges().forEach(function(chg){
+        var ck=chg.doc.data();if(!ck||!ck.kif_id)return;
+        var lk=kifStore[ck.kif_id],cU=Number(ck.updated_at)||0,cD=ck.deleted_at?Number(ck.deleted_at):null,lU=lk?(Number(lk.updated_at)||0):0;
+        if(!lk||cU>lU||(cU===lU&&cD&&!lk.deleted_at)){
+          var wDel=lk?!!lk.deleted_at:false,pTx=lk?lk.kif_text:"",pTi=lk?lk.title:"";
+          kifStore[ck.kif_id]={kif_id:ck.kif_id,title:ck.title||"無題",kif_text:ck.kif_text||"",updated_at:cU,deleted_at:cD,dirty:false};
+          if(cD){if(!wDel){kChg=true;if(ck.kif_id===currentKifId)curDel=true;}}
+          else if(wDel||pTx!==ck.kif_text||pTi!==ck.title){kChg=true;if(ck.kif_id===currentKifId&&pTx!==ck.kif_text)curUpd=true;}
+        }
+      });
+      if(kChg)refreshUIAfterCloudMerge(true,curUpd,curDel,false,false,false);
+    },function(err){});
+
+    for(var kid in kifStore){
+      ensureMemoRealtimeForKif(kid);
+    }
+
+    var unsubEvents=fb.onSnapshot(fb.collection(fbDb,"users",uid,"practice_events"),function(snap){
+      if(snap.metadata.hasPendingWrites)return;
+      var sChg=false;
+      snap.docChanges().forEach(function(chg){
+        var ce=chg.doc.data();if(!ce||!ce.event_id||!ce.kif_id||!ce.branch_id)return;
+        if(!practiceEvents[ce.event_id]){
+          practiceEvents[ce.event_id]={
+            event_id:ce.event_id,
+            kif_id:ce.kif_id,
+            branch_id:ce.branch_id,
+            total_delta:Number(ce.total_delta)||1,
+            ok_delta:Number(ce.ok_delta)||0,
+            created_at:Number(ce.created_at)||0,
+            synced:true
+          };
+          sChg=true;
+        }
+      });
+      if(sChg)refreshUIAfterCloudMerge(false,false,false,false,true,false);
+    },function(err){});
+
+    realtimeUnsubs.push(unsubKifs,unsubEvents);
+  }catch(e){}
+}
+
+function readDroppedKifFile(file){
+  var rdr=new FileReader();
+  rdr.onload=function(ev){
+    var buf=ev.target.result,tx="";
+    try{tx=new TextDecoder("utf-8",{fatal:true}).decode(buf);}catch(e){try{tx=new TextDecoder("shift-jis").decode(buf);}catch(e2){}}
+    if(tx&&tx.indexOf("\uFFFD")!==-1){try{tx=new TextDecoder("shift-jis").decode(buf);}catch(e3){}}
+    regK(file.name.replace(/\.[^/.]+$/,"")||"棋譜",tx);
+  };
+  rdr.readAsArrayBuffer(file);
+}
+
+window.addEventListener("online",function(){if(fbDb&&currentUser)syncWithCloud(true);});
+window.addEventListener("offline",function(){if(fbDb&&currentUser)setSyncStatus("err","☁️ オフライン");});
+window.addEventListener("dragover",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="flex";});
+window.addEventListener("dragleave",function(e){if(e.clientX<=0||e.clientY<=0){var d=document.getElementById("d-ovl");if(d)d.style.display="none";}});
+window.addEventListener("drop",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="none";var f=e.dataTransfer.files[0];if(f)readDroppedKifFile(f);});
+
+initB();loadAndMigrateLocalData();
+var initList=getActiveKifList(),firstKifId=initList.length?initList[0].kif_id:"";
+uD(firstKifId);if(firstKifId)lB(kifStore[firstKifId].kif_text,firstKifId);else{rawMoves=[];rG();}
+if(window._fb)initFirebaseClient(false);
+else window.addEventListener("fb-sdk-ready",function(){initFirebaseClient(false);});
+</script>
+</body>
+</html>
