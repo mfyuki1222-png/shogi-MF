@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>定跡チェッカー ver.2.0</title>
+<title>定跡チェッカー ver.2.1</title>
 <script type="module">
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
@@ -73,9 +73,10 @@ td.w-cell{background:#ffcdd2!important;}
 <div id="sync-toast"></div>
 <div class="layout-wrapper">
   <div id="app-main">
-    <h2><span>定跡チェッカー</span><span class="ver-badge">ver.2.0</span><span id="sync-badge" onclick="oSync()">☁️ 未設定</span></h2>
+    <h2><span>定跡チェッカー</span><span class="ver-badge">ver.2.1</span><span id="sync-badge" onclick="oSync()">☁️ 未設定</span></h2>
     <div class="pbar"><select id="sel" onchange="swKif()"></select><button class="btn" style="background:#546e7a;" onclick="renKif()">名変</button><button class="btn" style="background:#c62828;" onclick="delKif()">削除</button></div>
     <div style="margin:3px 0;display:flex;justify-content:center;gap:4px;">
+      <button class="btn" style="background:#555;padding:5px 8px;" id="btn-pmode" onclick="togglePMode()">☗ 先手で練習</button>
       <button class="btn" style="background:#d81b60;" onclick="sRec()">🔴 作成</button>
       <button class="btn" onclick="oM('modal')">➕ KIF</button>
       <button class="btn" style="background:#00897b;" onclick="triggerCloudSyncBtn()">☁️ 同期</button>
@@ -142,7 +143,6 @@ td.w-cell{background:#ffcdd2!important;}
 <script>
 // ============================================================================
 // 【Firebase 設定欄】
-// Firebase Console で取得したウェブアプリの設定値（shogi-95e20）
 // ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyAI5wQoUmcje4jvGRa8LXGnYTYAd1nMvS4",
@@ -157,11 +157,29 @@ const FIREBASE_CONFIG = firebaseConfig;
 
 var kifStore={},memoStore={},practiceEvents={},branchStats={},skifs={},kifMemos={};
 var parsedTree=[],currentKifId="",currentKifName="",currentBlockIndex=0,rawMoves=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[],cCnt=0,hFail=false,isR=false,rTurn=0,rTree=[],rCurBlock=0,rPly=0;
-var goteTimer=null,goteTimerVersion=0,currentPracticeBranch=null,bStatDone=false;
+var oppTimer=null,oppTimerVersion=0,currentPracticeBranch=null,bStatDone=false;
 var fbApp=null,fbAuth=null,fbDb=null,fbInitPromise=null,authUnsub=null,realtimeUnsubs=[],memoRealtimeUnsubs={},currentUser=null,isSyncing=false,pendingSync=false,memoSyncTimer=null;
 var cm={'１':1,'２':2,'３':3,'４':4,'５':5,'６':6,'７':7,'８':8,'９':9,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
 var zn=["","１","２","３","４","５","６","７","８","９"],kn=["","一","二","三","四","五","六","七","八","九"];
 var unp={"と":"歩","成香":"香","成桂":"桂","成銀":"銀","馬":"角","竜":"飛","龍":"飛"},pmap={"角":"馬","飛":"竜","歩":"と","銀":"成銀","桂":"成桂","香":"成香"};
+
+// --- 後手モード管理 ---
+var isGoteMode = false;
+function togglePMode(){
+  isGoteMode = !isGoteMode;
+  var btn = document.getElementById("btn-pmode");
+  if(isGoteMode){
+    btn.textContent = "☖ 後手で練習";
+    btn.style.background = "#795548";
+  }else{
+    btn.textContent = "☗ 先手で練習";
+    btn.style.background = "#555";
+  }
+  rG();
+}
+function getMyTotalPlies(){
+  return isGoteMode ? Math.floor(rawMoves.length/2) : Math.ceil(rawMoves.length/2);
+}
 
 function fnv1aHash(str){
   var h1=0x811c9dc5,h2=0x811c9dc5,s=String(str||"");
@@ -244,8 +262,8 @@ function loadAndMigrateLocalData(){
 
 function showToast(msg){var t=document.getElementById("sync-toast");if(!t)return;t.textContent=msg;t.style.display="block";clearTimeout(t._tid);t._tid=setTimeout(function(){t.style.display="none";},2600);}
 function setSyncStatus(st,tx){var b=document.getElementById("sync-badge");if(!b)return;b.className=st==="ok"?"sync-ok":(st==="ing"?"sync-ing":(st==="err"?"sync-err":""));b.textContent=tx;}
-function cancelGoteTimer(){goteTimerVersion++;if(goteTimer!==null){clearTimeout(goteTimer);goteTimer=null;}}
-function scheduleGote(d){cancelGoteTimer();var v=goteTimerVersion,ek=currentKifId,eb=currentBlockIndex,es=st;goteTimer=setTimeout(function(){goteTimer=null;if(v!==goteTimerVersion||isR||currentKifId!==ek||currentBlockIndex!==eb||st!==es)return;autoPlayGote();},d);}
+function cancelOppTimer(){oppTimerVersion++;if(oppTimer!==null){clearTimeout(oppTimer);oppTimer=null;}}
+function scheduleOpponent(d){cancelOppTimer();var v=oppTimerVersion,ek=currentKifId,eb=currentBlockIndex,es=st;oppTimer=setTimeout(function(){oppTimer=null;if(v!==oppTimerVersion||isR||currentKifId!==ek||currentBlockIndex!==eb||st!==es)return;autoPlayOpponent();},d);}
 function pro(pt,nm,isD){return(!isD&&nm.indexOf("成")!==-1&&nm.indexOf("不成")===-1&&pt.indexOf("成")===-1)?(pmap[pt]||pt):pt;}
 function escapeHtml(s){return s?String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"):"";}
 function formatKifCommentHtml(c,p){return c?'<br><span style="display:inline-block;margin-top:2px;padding:1px 6px;background:#fff8e1;border-left:3px solid #ffa000;color:#4e342e;font-size:11px;font-weight:normal;text-align:left;border-radius:2px;">📝 '+(p?'<b>'+escapeHtml(p)+'</b> ':'')+escapeHtml(c).replace(/\r?\n/g,"<br>")+'</span>':"";}
@@ -310,7 +328,7 @@ function uD(selId){
   }
 }
 function swKif(){
-  cancelGoteTimer();if(isR)eRec();
+  cancelOppTimer();if(isR)eRec();
   var kId=document.getElementById("sel").value;
   if(kId&&kifStore[kId]&&!kifStore[kId].deleted_at)lB(kifStore[kId].kif_text,kId);
   else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";updateMemoUI();rG();}
@@ -318,7 +336,7 @@ function swKif(){
 function delKif(){
   var delId=document.getElementById("sel").value;
   if(!delId||!kifStore[delId]||!confirm("「"+kifStore[delId].title+"」を削除しますか？"))return;
-  cancelGoteTimer();var now=Date.now();
+  cancelOppTimer();var now=Date.now();
   kifStore[delId].deleted_at=now;kifStore[delId].updated_at=now;kifStore[delId].dirty=true;saveLocalStores();
   var list=getActiveKifList(),nid=list.length?list[0].kif_id:"";uD(nid);
   if(nid)lB(kifStore[nid].kif_text,nid);else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";updateMemoUI();rG();}
@@ -372,7 +390,7 @@ function parseFullKif(tx){
 function getFullSequenceForBlock(idx){return parsedTree[idx]?parsedTree[idx].fullSeq||[]:[];}
 function buildSequenceFromBlock(idx){if(!parsedTree.length)return;currentBlockIndex=(idx<0||idx>=parsedTree.length)?0:idx;rawMoves=getFullSequenceForBlock(currentBlockIndex);}
 function lB(tx,kId){
-  cancelGoteTimer();if(kId&&kifStore[kId]){currentKifId=kId;currentKifName=kifStore[kId].title;}
+  cancelOppTimer();if(kId&&kifStore[kId]){currentKifId=kId;currentKifName=kifStore[kId].title;}
   parsedTree=parseFullKif(tx);if(!parsedTree.length){parsedTree=[];rawMoves=[];rG();return;}
   buildSequenceFromBlock(0);rG();
 }
@@ -391,7 +409,7 @@ function getBranchesAt(ply){
   return uniq.length>1?uniq:[];
 }
 
-function showSenteBranchInfo(branches,currentPly,prefixHtml){
+function showBranchInfo(branches,currentPly,prefixHtml){
   var labels=["A","B","C","D","E","F","G","H"],arr=[];
   for(var i=0;i<branches.length;i++){
     var k=currentKifId+"::"+branches[i].branchId,stCnt=branchStats[k]?branchStats[k].total:0;
@@ -399,12 +417,12 @@ function showSenteBranchInfo(branches,currentPly,prefixHtml){
   }
   setStHtml((prefixHtml?prefixHtml+"<br>":"")+'<span style="color:#d81b60;">🔀 この局面には分岐があります</span><br><span style="font-size:12px;font-weight:normal;color:#333;">'+arr.join(" ／ ")+'</span>');
 }
-function showSentePostMoveBranches(branches,chosen){
+function showPostMoveBranches(branches,chosen,turnMark){
   if(!branches||branches.length<2||!chosen)return "";
   var others=[],seen={};
   for(var i=0;i<branches.length;i++){
     if(branches[i].moveKey===chosen.moveKey)continue;
-    var m="▲"+escapeHtml(branches[i].moveName);if(!seen[m]){seen[m]=true;others.push(m);}
+    var m=turnMark+escapeHtml(branches[i].moveName);if(!seen[m]){seen[m]=true;others.push(m);}
   }
   return others.length?'<br><span style="font-size:12px;color:#d81b60;">🔀 ほかにも '+others.join(" ／ ")+' の分岐がありました</span>':"";
 }
@@ -422,7 +440,7 @@ function showBranchSheet(branches,currentPly){
   document.getElementById("bs-title").textContent="🔀 "+currentPly+"手目の分岐ルート選択";
   for(var i=0;i<branches.length;i++)(function(b){
     addBsBtn(list,b.index===0?"⭐ ":"🔀 ",b.moveName," ("+b.name+")",getBranchStatStr(currentKifId,b.branchId),function(){
-      cancelGoteTimer();closeBSheet();svH();buildSequenceFromBlock(b.index);currentPracticeBranch=b.branchId;bStatDone=false;jumpToExactPly(currentPly-1,true,true);
+      cancelOppTimer();closeBSheet();svH();buildSequenceFromBlock(b.index);currentPracticeBranch=b.branchId;bStatDone=false;jumpToExactPly(currentPly-1,true,true);
     });
   })(branches[i]);
   document.getElementById("bsheet").style.display="block";
@@ -430,7 +448,10 @@ function showBranchSheet(branches,currentPly){
 function showBranchModalManual(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var cp=st+1,bAt=getBranchesAt(cp);
-  if(bAt.length){cp%2===1?showSenteBranchInfo(bAt,cp):showBranchSheet(bAt,cp);}
+  var isMyTurn = (!isGoteMode && st%2===0) || (isGoteMode && st%2===1);
+  if(bAt.length){
+    isMyTurn ? showBranchInfo(bAt,cp) : showBranchSheet(bAt,cp);
+  }
   else{
     var el=document.getElementById("st-inner")||document.getElementById("st"),prev=el.innerHTML;
     setStHtml('<span style="color:#e65100;">ℹ️ 現在の局面（'+cp+'手目）に分岐はありません</span>');
@@ -444,7 +465,7 @@ function showAllBranchesModal(){
   for(var i=0;i<parsedTree.length;i++)(function(idx){
     var b=parsedTree[idx];
     addBsBtn(list,idx===0?"⭐ ":"🔀 ",idx===0?"本譜":b.name,"",getBranchStatStr(currentKifId,b.branchId),function(){
-      cancelGoteTimer();closeBSheet();buildSequenceFromBlock(idx);currentPracticeBranch=idx>0?b.branchId:null;bStatDone=false;jumpToExactPly(b.startPly>1?b.startPly-1:0,true,false);
+      cancelOppTimer();closeBSheet();buildSequenceFromBlock(idx);currentPracticeBranch=idx>0?b.branchId:null;bStatDone=false;jumpToExactPly(b.startPly>1?b.startPly-1:0,true,false);
     });
   })(i);
   document.getElementById("bsheet").style.display="block";
@@ -468,44 +489,57 @@ function uScr(){
   var el=document.getElementById("sb");
   if(isR||!rawMoves||!rawMoves.length){el.style.visibility="hidden";return;}
   el.style.visibility="visible";
-  var ps=Math.ceil(st/2),rt=ps===0?100:Math.min(100,Math.round((cCnt/ps)*100));
-  var curB=parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].name:"本譜";
+  var ps = isGoteMode ? Math.floor(st/2) : Math.ceil(st/2);
+  var rt = ps===0?100:Math.min(100,Math.round((cCnt/ps)*100));
+  var curB = parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].name:"本譜";
   el.innerHTML='<span>['+escapeHtml(curB)+'] '+st+'/'+rawMoves.length+'手</span><span>正答率: '+rt+'% ('+cCnt+'/'+ps+')</span>';
 }
 function svH(){hst.push({st:st,blk:currentBlockIndex,cc:cCnt,hf:hFail,cpb:currentPracticeBranch,bsd:bStatDone});}
 
 function uM(){
-  cancelGoteTimer();if(isA)return;closeBSheet();
+  cancelOppTimer();if(isA)return;closeBSheet();
   if(isR){
     if(rPly<=0)return;
     var tp=rPly-1,tb=rCurBlock;while(tb>0&&rTree[tb]&&tp<rTree[tb].startPly-1)tb=rTree[tb].parentIdx;
     rebuildRecBoard(tb,tp);return;
   }
   if(st<=0)return;
-  var tp=st-1;if(tp%2===1&&getBranchesAt(tp+1).length<2)tp--;if(tp<0)tp=0;
+  var tp=st-1;
+  var isMyTurnBefore = (!isGoteMode && tp%2===0) || (isGoteMode && tp%2===1);
+  if(!isMyTurnBefore && getBranchesAt(tp+1).length<2) tp--;
+  if(tp<0)tp=0;
+  
   var tb=currentBlockIndex;while(tb>0&&parsedTree[tb]&&tp<parsedTree[tb].startPly-1)tb=parsedTree[tb].parentIdx;
   if(tb!==currentBlockIndex)buildSequenceFromBlock(tb);
   var rCC=null,rHF=false,rCPB=null,rBSD=false;
   while(hst.length>0&&hst[hst.length-1].st>=tp){var p=hst.pop();if(p.st===tp){rCC=p.cc;rHF=p.hf;rCPB=p.cpb;rBSD=p.bsd;}}
   if(rCC!==null){cCnt=rCC;hFail=rHF;currentPracticeBranch=rCPB;bStatDone=rBSD;}
-  else{var ms=Math.ceil(tp/2);if(cCnt>ms)cCnt=ms;hFail=false;currentPracticeBranch=tb>0?parsedTree[tb].branchId:null;bStatDone=false;}
+  else{
+    var ms=isGoteMode ? Math.floor(tp/2) : Math.ceil(tp/2);
+    if(cCnt>ms)cCnt=ms;
+    hFail=false;currentPracticeBranch=tb>0?parsedTree[tb].branchId:null;bStatDone=false;
+  }
   jumpToExactPly(tp,false,true);
 }
 function jumpToExactPly(playCount,skipBranch,preserveState){
-  cancelGoteTimer();closeBSheet();
+  cancelOppTimer();closeBSheet();
   var sHst=preserveState?hst.slice():[],sCC=preserveState?cCnt:0,sHF=preserveState?hFail:false;
   initB();for(var i=0;i<rawMoves.length;i++){if(rawMoves[i].ply>playCount)break;applyMoveToBoard(rawMoves[i]);}
   st=playCount;sF=null;hI=null;isA=false;hst=sHst;cCnt=sCC;hFail=sHF;
   var nextPly=playCount+1,branches=skipBranch?[]:getBranchesAt(nextPly),lmHtml="";
   if(st>0&&rawMoves[st-1]&&rawMoves[st-1].comment){var lm=rawMoves[st-1];lmHtml=formatKifCommentHtml(lm.comment,lm.ply+"手目("+(lm.ply%2===1?"▲":"△")+lm.name+"):");}
+  
+  var isMyTurn = (!isGoteMode && playCount%2===0) || (isGoteMode && playCount%2===1);
   if(branches.length>=2){
-    if(nextPly%2===1){
+    if(isMyTurn){
       if(!currentPracticeBranch)currentPracticeBranch=parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:branches[0].branchId;
       if(!preserveState)bStatDone=false;
-      showSenteBranchInfo(branches,nextPly,lmHtml?lmHtml.replace(/^<br>/,""):"");
-    }else{setStHtml('<span style="color:#1976d2;">▶ '+nextPly+'手目 相手の応手を選択してください</span>'+lmHtml);showBranchSheet(branches,nextPly);}
+      showBranchInfo(branches,nextPly,lmHtml?lmHtml.replace(/^<br>/,""):"");
+    }else{
+      setStHtml('<span style="color:#1976d2;">▶ '+nextPly+'手目 相手の応手を選択してください</span>'+lmHtml);showBranchSheet(branches,nextPly);
+    }
   }else{
-    if(st<rawMoves.length&&st%2===1){isA=true;scheduleGote(400);}
+    if(st<rawMoves.length&&!isMyTurn){isA=true;scheduleOpponent(400);}
     else if(st<rawMoves.length)setStHtml('<span style="color:#2e7d32;">▶ '+nextPly+'手目を指してください</span>'+lmHtml);
     else setStHtml("最終手まで進みました"+lmHtml);
   }
@@ -515,36 +549,50 @@ function jumpToPly(){
   if(!rawMoves.length){alert("棋譜が読み込まれていません");return;}
   var max=rawMoves.length,inp=prompt("何手目まで進めて練習しますか？ (0〜"+max+"手目):",st.toString());if(inp===null)return;
   var t=parseInt(inp,10);if(isNaN(t)||t<0||t>max){alert("0から"+max+"の数値を入力してください");return;}
-  cancelGoteTimer();var tb=currentBlockIndex;while(tb>0&&parsedTree[tb]&&t<parsedTree[tb].startPly-1)tb=parsedTree[tb].parentIdx;
+  cancelOppTimer();var tb=currentBlockIndex;while(tb>0&&parsedTree[tb]&&t<parsedTree[tb].startPly-1)tb=parsedTree[tb].parentIdx;
   if(tb!==currentBlockIndex)buildSequenceFromBlock(tb);
   currentPracticeBranch=tb>0?parsedTree[tb].branchId:null;bStatDone=false;jumpToExactPly(t,false,false);
 }
 
 function renderBoard(wK){
   var tb=document.getElementById("tb");tb.innerHTML="";
-  for(var y=1;y<=9;y++){
+  var viewGote = isGoteMode;
+  
+  var ys = viewGote ? 9 : 1, ye = viewGote ? 1 : 9, yd = viewGote ? -1 : 1;
+  var xs = viewGote ? 1 : 9, xe = viewGote ? 9 : 1, xd = viewGote ? 1 : -1;
+
+  for(var y=ys; viewGote ? y>=ye : y<=ye; y+=yd){
     var tr=document.createElement("tr");
-    for(var x=9;x>=1;x--){
+    for(var x=xs; viewGote ? x<=xe : x>=xe; x+=xd){
       var td=document.createElement("td"),k=x+","+y;td.id="c_"+k;
       if(sF===k)td.className="sel";if(hI&&hI.from===k)td.className="h-from";if(hI&&hI.to===k)td.className="h-to";if(wK===k)td.className="w-cell";
-      var p=bS[k];if(p){var sp=document.createElement("span");sp.className="piece";sp.textContent=p.t;if(p.g)td.className+=" gote";td.appendChild(sp);}
+      var p=bS[k];if(p){
+        var sp=document.createElement("span");sp.className="piece";sp.textContent=p.t;
+        if(viewGote ? !p.g : p.g)td.className+=" gote";
+        td.appendChild(sp);
+      }
       (function(cx,cy){td.onclick=function(){onC(cx,cy);};})(x,y);tr.appendChild(td);
     }
     tb.appendChild(tr);
   }
   var sh=document.getElementById("sh"),gh=document.getElementById("gh");
-  sh.innerHTML='<span style="font-size:11px;font-weight:bold;">先手:</span>';gh.innerHTML='<span style="font-size:11px;font-weight:bold;">後手:</span>';
+  sh.innerHTML='<span style="font-size:11px;font-weight:bold;">'+(viewGote?"後手:":"先手:")+'</span>';
+  gh.innerHTML='<span style="font-size:11px;font-weight:bold;">'+(viewGote?"先手:":"後手:")+'</span>';
+  
   for(var sp in sHnd)if(sHnd[sp]>0)(function(pn){
     var d=document.createElement("div");d.id="hs_"+pn;d.className="hp"+(sF===("h_"+pn)?" sel":"");
+    if(viewGote) d.className+=" gote";
     var ps=document.createElement("span");ps.className="piece";ps.textContent=pn;d.appendChild(ps);
     if(sHnd[pn]>1){var cs=document.createElement("span");cs.className="hcnt";cs.textContent=sHnd[pn];d.appendChild(cs);}
-    d.onclick=function(){if(!isA&&(!isR||rTurn===0)){closeBSheet();hI=null;sF=(sF===("h_"+pn))?null:("h_"+pn);renderBoard();}};sh.appendChild(d);
+    d.onclick=function(){if(!isA&&(!isR ? !viewGote : rTurn===0)){closeBSheet();hI=null;sF=(sF===("h_"+pn))?null:("h_"+pn);renderBoard();}};
+    (viewGote?gh:sh).appendChild(d);
   })(sp);
   for(var gp in gHnd)if(gHnd[gp]>0)(function(gpn){
-    var d=document.createElement("div");d.id="hg_"+gpn;d.className="hp gote"+(sF===("h_g_"+gpn)?" sel":"");
+    var d=document.createElement("div");d.id="hg_"+gpn;d.className="hp"+(viewGote?"":" gote")+(sF===("h_g_"+gpn)?" sel":"");
     var ps=document.createElement("span");ps.className="piece";ps.textContent=gpn;d.appendChild(ps);
     if(gHnd[gpn]>1){var cs=document.createElement("span");cs.className="hcnt";cs.textContent=gHnd[gpn];d.appendChild(cs);}
-    d.onclick=function(){if(!isA&&isR&&rTurn===1){closeBSheet();hI=null;sF=(sF===("h_g_"+gpn))?null:("h_g_"+gpn);renderBoard();}};gh.appendChild(d);
+    d.onclick=function(){if(!isA&&(!isR ? viewGote : rTurn===1)){closeBSheet();hI=null;sF=(sF===("h_g_"+gpn))?null:("h_g_"+gpn);renderBoard();}};
+    (viewGote?sh:gh).appendChild(d);
   })(gp);
 }
 function anim(fk,tk,tx,isG,cb){
@@ -553,27 +601,42 @@ function anim(fk,tk,tx,isG,cb){
   var trEl=document.getElementById("c_"+tk);if(!frEl||!trEl){cb();return;}
   var fr=frEl.getBoundingClientRect(),tr=trEl.getBoundingClientRect();
   var sx=fr.left+(fr.width-tr.width*.85)/2,sy=fr.top+(fr.height-tr.height*.85)/2,ex=tr.left+(tr.width-tr.width*.85)/2,ey=tr.top+(tr.height-tr.height*.85)/2;
-  var fl=document.createElement("div");fl.className="piece fly"+(isG?" gote":"");fl.textContent=tx;fl.style.left=fl.style.top="0";
-  fl.style.transform="translate3d("+sx+"px,"+sy+"px,0)"+(isG?" rotate(180deg)":"");document.body.appendChild(fl);
-  requestAnimationFrame(function(){requestAnimationFrame(function(){fl.style.transform="translate3d("+ex+"px,"+ey+"px,0)"+(isG?" rotate(180deg)":"");});});
+  
+  var viewGote = isGoteMode;
+  var isRotated = viewGote ? !isG : isG;
+  
+  var fl=document.createElement("div");fl.className="piece fly"+(isRotated?" gote":"");fl.textContent=tx;fl.style.left=fl.style.top="0";
+  fl.style.transform="translate3d("+sx+"px,"+sy+"px,0)"+(isRotated?" rotate(180deg)":"");document.body.appendChild(fl);
+  requestAnimationFrame(function(){requestAnimationFrame(function(){fl.style.transform="translate3d("+ex+"px,"+ey+"px,0)"+(isRotated?" rotate(180deg)":"");});});
   setTimeout(function(){if(fl.parentNode)fl.parentNode.removeChild(fl);cb();},190);
 }
-function autoPlayGote(){
-  if(isR||st>=rawMoves.length||st%2===0){isA=false;return;}
-  var aVer=goteTimerVersion,aKif=currentKifId,aBlk=currentBlockIndex,aSt=st,exp=rawMoves[st],isD=(exp.from.indexOf("h_")===0);
+function autoPlayOpponent(){
+  if(isR||st>=rawMoves.length)return;
+  var isOppTurn = (!isGoteMode && st%2===1) || (isGoteMode && st%2===0);
+  if(!isOppTurn){isA=false;return;}
+  
+  var aVer=oppTimerVersion,aKif=currentKifId,aBlk=currentBlockIndex,aSt=st,exp=rawMoves[st],isD=(exp.from.indexOf("h_")===0);
+  var isG = st%2===1;
+  
   var pt=pro(isD?exp.from.replace("h_",""):(bS[exp.from]?bS[exp.from].t:"桂"),exp.name,isD);
   if(!isD&&bS[exp.from])delete bS[exp.from];renderBoard();
-  anim(exp.from,exp.to,pt,1,function(){
-    if(aVer!==goteTimerVersion||isR||currentKifId!==aKif||currentBlockIndex!==aBlk||st!==aSt)return;
-    if(bS[exp.to]){var rC=unp[bS[exp.to].t]||bS[exp.to].t;gHnd[rC]=(gHnd[rC]||0)+1;}
-    if(isD)gHnd[pt]--;bS[exp.to]={t:pt,g:1};
-    var gHtml=formatKifCommentHtml(exp.comment,"△"+exp.name+":");
+  anim(exp.from,exp.to,pt,isG?1:0,function(){
+    if(aVer!==oppTimerVersion||isR||currentKifId!==aKif||currentBlockIndex!==aBlk||st!==aSt)return;
+    if(bS[exp.to]){var rC=unp[bS[exp.to].t]||bS[exp.to].t;if(isG)gHnd[rC]=(gHnd[rC]||0)+1;else sHnd[rC]=(sHnd[rC]||0)+1;}
+    if(isD){if(isG)gHnd[pt]--;else sHnd[pt]--;}
+    bS[exp.to]={t:pt,g:isG?1:0};
+    
+    var turnMark = isG ? "△" : "▲";
+    var gHtml=formatKifCommentHtml(exp.comment,turnMark+exp.name+":");
     st++;uScr();renderBoard();updateMemoUI();
-    var nextPly=st+1,branches=getBranchesAt(nextPly),pfx='<span style="font-size:12px;color:#555;">相手: △'+escapeHtml(exp.name)+'</span>'+gHtml;
-    if(branches.length>=2){currentPracticeBranch=parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:branches[0].branchId;bStatDone=false;showSenteBranchInfo(branches,nextPly,pfx);isA=false;}
-    else{
+    var nextPly=st+1,branches=getBranchesAt(nextPly),pfx='<span style="font-size:12px;color:#555;">相手: '+turnMark+escapeHtml(exp.name)+'</span>'+gHtml;
+    
+    if(branches.length>=2){
+       currentPracticeBranch=parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:branches[0].branchId;
+       bStatDone=false;showBranchInfo(branches,nextPly,pfx);isA=false;
+    }else{
       if(st<rawMoves.length)setStHtml(pfx+'<br><span style="color:#2e7d32;">▶ '+nextPly+'手目を指してください</span>');
-      else{var fr=Math.min(100,Math.round((cCnt/Math.ceil(rawMoves.length/2))*100));setStHtml(pfx+'<br><span style="color:#1b5e20;"> ◯ 完了！ 正答率: '+fr+'%</span>');}
+      else{var fr=Math.min(100,Math.round((cCnt/getMyTotalPlies())*100));setStHtml(pfx+'<br><span style="color:#1b5e20;"> ◯ 完了！ 正答率: '+fr+'%</span>');}
       isA=false;
     }
   });
@@ -582,14 +645,24 @@ function autoPlayGote(){
 function onC(x,y){
   if(isA)return;var k=x+","+y;if(isR){hRec(x,y,k);return;}
   hI=null;if(!rawMoves.length){setStHtml("棋譜を登録または選択してください");return;}
-  if(!sF){if(bS[k]&&!bS[k].g){closeBSheet();sF=k;renderBoard();}return;}
+  
+  var myG = isGoteMode ? 1 : 0;
+  
+  if(!sF){if(bS[k]&&bS[k].g===myG){closeBSheet();sF=k;renderBoard();}return;}
   if(sF===k){sF=null;renderBoard();return;}
-  if(bS[k]&&!bS[k].g){closeBSheet();sF=k;renderBoard();return;}
+  if(bS[k]&&bS[k].g===myG){closeBSheet();sF=k;renderBoard();return;}
+  
   var from=sF,to=k;sF=null;if(st>=rawMoves.length)return;
-  var isD=(from.indexOf("h_")===0),pt=isD?from.replace("h_",""):(bS[from]?bS[from].t:"");if(!pt)return;
+  var isD=(from.indexOf("h_")===0),pt=isD?from.replace("h_g_","").replace("h_",""):(bS[from]?bS[from].t:"");if(!pt)return;
   var isMatch=false,nextPly=st+1,branches=getBranchesAt(nextPly),exp=rawMoves[st],mStat=null,chosen=null;
-  if(branches.length>=2&&nextPly%2===1){
-    var uKey=(isD?"h_"+pt:from)+"->"+to,mB=[];
+  var isG = st%2===1;
+  
+  var isMyTurn = (!isGoteMode && st%2===0) || (isGoteMode && st%2===1);
+  if(!isMyTurn) return;
+
+  if(branches.length>=2){
+    var hPrefix = isG ? "h_g_" : "h_";
+    var uKey=(isD?hPrefix+pt:from)+"->"+to,mB=[];
     for(var i=0;i<branches.length;i++)if(branches[i].coordKey===uKey)mB.push(branches[i]);
     if(mB.length>0){
       isMatch=true;chosen=mB[0];
@@ -597,39 +670,56 @@ function onC(x,y){
       mStat=chosen.branchId;currentPracticeBranch=chosen.branchId;
       if(chosen.index!==currentBlockIndex)buildSequenceFromBlock(chosen.index);exp=rawMoves[st];
     }
-  }else isMatch=isD?(exp.from==="h_"+pt&&exp.to===to):(exp.from===from&&exp.to===to);
+  }else {
+    var hPrefix = isG ? "h_g_" : "h_";
+    isMatch=isD?(exp.from===hPrefix+pt&&exp.to===to):(exp.from===from&&exp.to===to);
+  }
 
-  var targetBranch=mStat||currentPracticeBranch||((branches.length>=2&&nextPly%2===1)?(parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:branches[0].branchId):null);
+  var targetBranch=mStat||currentPracticeBranch||((branches.length>=2)?(parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:branches[0].branchId):null);
+  var turnMark = isG ? "△" : "▲";
+
   if(isMatch){
     svH();isA=true;closeBSheet();
     if(!bStatDone&&targetBranch){saveBranchStat(currentKifId,targetBranch,!hFail);bStatDone=true;}
     if(!hFail)cCnt++;
     pt=pro(pt,exp.name,isD);if(!isD)delete bS[from];renderBoard();
-    anim(from,to,pt,0,function(){
-      if(bS[to]){var cap=unp[bS[to].t]||bS[to].t;sHnd[cap]=(sHnd[cap]||0)+1;}
-      if(isD)sHnd[pt]--;bS[to]={t:pt,g:0};st++;hFail=false;uScr();renderBoard();updateMemoUI();
-      var sHtml=formatKifCommentHtml(exp.comment),pHtml=showSentePostMoveBranches(branches,chosen),np2=st+1,br2=getBranchesAt(np2);
-      var baseMsg='<span style="color:#1b5e20;">◯ 正解（▲'+escapeHtml(exp.name)+'）</span>'+sHtml+pHtml;
-      if(br2.length>=2){setStHtml(baseMsg+'<br><span style="font-size:12px;color:#1976d2;">▶ 相手の応手を選択してください</span>');isA=false;setTimeout(function(){showBranchSheet(br2,np2);},250);}
-      else if(st<rawMoves.length){setStHtml(baseMsg);scheduleGote((sHtml||pHtml)?900:220);}
-      else{var fr=Math.min(100,Math.round((cCnt/Math.ceil(rawMoves.length/2))*100));setStHtml('<span style="color:#1b5e20;">◯ 完了！ 正答率: '+fr+'%</span>'+sHtml+pHtml);isA=false;}
+    anim(from,to,pt,isG?1:0,function(){
+      if(bS[to]){var cap=unp[bS[to].t]||bS[to].t;if(isG)gHnd[cap]=(gHnd[cap]||0)+1;else sHnd[cap]=(sHnd[cap]||0)+1;}
+      if(isD){if(isG)gHnd[pt]--;else sHnd[pt]--;}
+      bS[to]={t:pt,g:isG?1:0};st++;hFail=false;uScr();renderBoard();updateMemoUI();
+      var sHtml=formatKifCommentHtml(exp.comment);
+      var pHtml=showPostMoveBranches(branches,chosen,turnMark);
+      var np2=st+1,br2=getBranchesAt(np2);
+      var baseMsg='<span style="color:#1b5e20;">◯ 正解（'+turnMark+escapeHtml(exp.name)+'）</span>'+sHtml+pHtml;
+      
+      if(br2.length>=2){
+        setStHtml(baseMsg+'<br><span style="font-size:12px;color:#1976d2;">▶ 相手の応手を選択してください</span>');
+        isA=false;setTimeout(function(){showBranchSheet(br2,np2);},250);
+      }
+      else if(st<rawMoves.length){
+        setStHtml(baseMsg);scheduleOpponent((sHtml||pHtml)?900:220);
+      }
+      else{
+        var fr=Math.min(100,Math.round((cCnt/getMyTotalPlies())*100));
+        setStHtml('<span style="color:#1b5e20;">◯ 完了！ 正答率: '+fr+'%</span>'+sHtml+pHtml);isA=false;
+      }
     });
   }else{
     if(!bStatDone&&targetBranch){saveBranchStat(currentKifId,targetBranch,false);bStatDone=true;}
     hFail=true;isA=true;var op=isD?null:bS[from];if(!isD)delete bS[from];renderBoard();
-    anim(from,to,pt,0,function(){
+    anim(from,to,pt,isG?1:0,function(){
       setStHtml('<span style="color:#c62828;">× 定跡外れ！</span>');renderBoard(to);
-      setTimeout(function(){anim(to,from,pt,0,function(){if(!isD)bS[from]=op;isA=false;renderBoard();});},450);
+      setTimeout(function(){anim(to,from,pt,isG?1:0,function(){if(!isD)bS[from]=op;isA=false;renderBoard();});},450);
     });
   }
 }
 
 function sRec(){
-  cancelGoteTimer();isR=true;rTurn=0;rTree=[{name:"本譜",startPly:1,parentIdx:-1,fullSeq:[]}];rCurBlock=0;rPly=0;
+  cancelOppTimer();isR=true;rTurn=0;rTree=[{name:"本譜",startPly:1,parentIdx:-1,fullSeq:[]}];rCurBlock=0;rPly=0;
   document.getElementById("rbar").style.display="block";document.getElementById("pbtns").style.display="none";document.getElementById("sb").style.visibility="hidden";
   closeBSheet();initB();uRSt();renderBoard();updateMemoUI();
 }
-function eRec(){cancelGoteTimer();isR=false;document.getElementById("rbar").style.display="none";document.getElementById("pbtns").style.display="flex";rG();}
+function eRec(){cancelOppTimer();isR=false;document.getElementById("rbar").style.display="none";document.getElementById("pbtns").style.display="flex";rG();}
 function uRSt(){var b=rTree[rCurBlock]||{name:"本譜",fullSeq:[]};setStHtml('<span style="color:#d81b60;">🔴 作成中 ['+escapeHtml(b.name)+']: '+rPly+'/'+b.fullSeq.length+'手目 ('+(rTurn===0?"▲先手番":"△後手番")+')</span>');}
 function rebuildRecBoard(bIdx,tPly){
   rCurBlock=(bIdx<0||bIdx>=rTree.length)?0:bIdx;var seq=rTree[rCurBlock].fullSeq;
@@ -714,24 +804,41 @@ function fRec(){
 function sH(){
   if(!rawMoves.length||st>=rawMoves.length||isA)return;
   var nextPly=st+1,branches=getBranchesAt(nextPly);
-  var targetBranch=currentPracticeBranch||((branches.length>=2&&nextPly%2===1)?(parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:branches[0].branchId):null);
+  var isMyTurn = (!isGoteMode && st%2===0) || (isGoteMode && st%2===1);
+  if(!isMyTurn) return; 
+  var targetBranch=currentPracticeBranch||((branches.length>=2)?(parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:branches[0].branchId):null);
   if(!bStatDone&&targetBranch){saveBranchStat(currentKifId,targetBranch,false);bStatDone=true;}
   hFail=true;hI={from:rawMoves[st].from,to:rawMoves[st].to};
-  setStHtml('<span style="color:#0277bd;">💡 正解: 【'+(rawMoves[st].ply%2===1?"▲":"△")+escapeHtml(rawMoves[st].name)+'】</span>');renderBoard();
+  var turnMark = (rawMoves[st].ply%2===1) ? "▲" : "△";
+  setStHtml('<span style="color:#0277bd;">💡 正解: 【'+turnMark+escapeHtml(rawMoves[st].name)+'】</span>');renderBoard();
 }
 function rG(){
-  cancelGoteTimer();closeBSheet();st=0;sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;currentPracticeBranch=null;bStatDone=false;
+  cancelOppTimer();closeBSheet();st=0;sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;currentPracticeBranch=null;bStatDone=false;
   if(parsedTree.length)buildSequenceFromBlock(0);initB();uScr();renderBoard();
   if(rawMoves.length){
     var br=getBranchesAt(1);
-    if(br.length>=2){currentPracticeBranch=parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:br[0].branchId;showSenteBranchInfo(br,1);}
-    else setStHtml('<span style="color:#2e7d32;">▶ 1手目を指してください</span>');
+    if(br.length>=2){
+      if(!isGoteMode){
+        currentPracticeBranch=parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:br[0].branchId;
+        showBranchInfo(br,1);
+      } else {
+        setStHtml('<span style="color:#1976d2;">▶ 1手目 相手の応手を選択してください</span>');
+        showBranchSheet(br,1);
+      }
+    }
+    else {
+      if(isGoteMode){
+        isA=true; scheduleOpponent(400);
+      } else {
+        setStHtml('<span style="color:#2e7d32;">▶ 1手目を指してください</span>');
+      }
+    }
   }else setStHtml("棋譜を登録または選択してください");
   updateMemoUI();
 }
 
 // ============================================================================
-// Firebase クラウド自動同期エンジン (Google Authentication / Cloud Firestore)
+// Firebase クラウド自動同期エンジン
 // ============================================================================
 function getEffectiveFbConfig(){
   var cfg={
@@ -857,7 +964,6 @@ async function initFirebaseClient(forceNewApp){
       fbApp=(!forceNewApp&&apps.length)?fb.getApp():fb.initializeApp(eff.config,appName);
       fbAuth=fb.getAuth(fbApp);
       fbDb=fb.getFirestore(fbApp);
-      console.log("[Firebase] Initialized project:",eff.config.projectId);
 
       if(authUnsub){try{authUnsub();}catch(e){}authUnsub=null;}
       authUnsub=fb.onAuthStateChanged(fbAuth,function(user){
@@ -865,7 +971,6 @@ async function initFirebaseClient(forceNewApp){
         var nextUid=user?user.uid:null;
         currentUser=user||null;
         updateAuthModalUI();
-        console.log("[Firebase Auth] State changed:",nextUid?"Logged in ("+(user.email||user.uid)+")":"Logged out");
         if(nextUid){
           if(nextUid!==prevUid){
             syncWithCloud(false).then(function(){
@@ -879,7 +984,6 @@ async function initFirebaseClient(forceNewApp){
       });
       return fbDb;
     }catch(e){
-      console.error("[Firebase] Init error:",e);
       setSyncStatus("err","⚠️ 接続エラー");
       return null;
     }finally{
@@ -902,7 +1006,6 @@ async function cloudSignIn(){
     await syncWithCloud(true);
     setupRealtimeSubscription();
   }catch(err){
-    console.error("[Firebase Auth] Google SignIn error:",err);
     setSyncStatus("err","⚠️ 認証失敗");
     alert("Googleログイン失敗: "+(err&&err.message?err.message:"認証設定を確認してください"));
   }
@@ -918,7 +1021,7 @@ async function cloudSignOut(){
     updateAuthModalUI();
     setSyncStatus("none","☁️ 未ログイン");
     showToast("ログアウトしました");
-  }catch(e){console.error("[Firebase Auth] SignOut error:",e);}
+  }catch(e){}
 }
 
 async function syncNowManual(){
@@ -926,7 +1029,6 @@ async function syncNowManual(){
   await syncWithCloud(true);
 }
 
-// 単一KIFの即時Firestore保存: users/{uid}/kifs/{kifId}
 async function pushSingleKifAsync(kId){
   if(!fbDb||!currentUser||!navigator.onLine||!kifStore[kId])return;
   var k=kifStore[kId],pu=k.updated_at,fb=window._fb;
@@ -946,14 +1048,11 @@ async function pushSingleKifAsync(kId){
       saveLocalStores();
     }
     setSyncStatus("ok","☁️ 同期済み");
-    console.log("[Firestore] Saved kif:",k.kif_id);
   }catch(e){
-    console.error("[Firestore] pushSingleKifAsync error:",e);
     setSyncStatus("err","⚠️ 同期エラー");
   }
 }
 
-// 単一局面メモの即時Firestore保存: users/{uid}/kifs/{kifId}/memos/{memoId}
 async function pushSingleMemoAsync(mKey){
   if(!fbDb||!currentUser||!navigator.onLine||!memoStore[mKey])return;
   var m=memoStore[mKey],pu=m.updated_at,fb=window._fb;
@@ -975,14 +1074,11 @@ async function pushSingleMemoAsync(mKey){
       saveLocalStores();
     }
     setSyncStatus("ok","☁️ 同期済み");
-    console.log("[Firestore] Saved memo:",mKey);
   }catch(e){
-    console.error("[Firestore] pushSingleMemoAsync error:",e);
     setSyncStatus("err","⚠️ 同期エラー");
   }
 }
 
-// 単一練習履歴イベントの即時Firestore保存: users/{uid}/practice_events/{eventId}
 async function pushSinglePracticeEventAsync(ev){
   if(!fbDb||!currentUser||!navigator.onLine||!ev)return;
   var fb=window._fb;
@@ -995,328 +1091,4 @@ async function pushSinglePracticeEventAsync(ev){
       branch_id:ev.branch_id,
       total_delta:ev.total_delta,
       ok_delta:ev.ok_delta,
-      created_at:ev.created_at
-    });
-    if(practiceEvents[ev.event_id])practiceEvents[ev.event_id].synced=true;
-    saveLocalStores();
-    setSyncStatus("ok","☁️ 同期済み");
-    console.log("[Firestore] Saved practice_event:",ev.event_id);
-  }catch(e){
-    console.warn("[Firestore] pushSinglePracticeEventAsync error:",e);
-  }
-}
-
-// Firestore writeBatch 分割コミット補助（500件制限対策）
-async function commitBatchChunks(items,buildFn){
-  if(!items.length||!fbDb)return true;
-  var fb=window._fb,chunkSize=400;
-  for(var i=0;i<items.length;i+=chunkSize){
-    var slice=items.slice(i,i+chunkSize);
-    var batch=fb.writeBatch(fbDb);
-    for(var j=0;j<slice.length;j++)buildFn(batch,slice[j]);
-    await batch.commit();
-  }
-  return true;
-}
-
-// クラウドデータのローカル反映後の非破壊UI更新
-function refreshUIAfterCloudMerge(kChg,curUpd,curDel,mChg,sChg,showUserToast){
-  rebuildBranchStatsFromEvents();
-  saveLocalStores();
-  var midGame=(isR||st>0||isA);
-  if(kChg){
-    var act=getActiveKifList();
-    if(curDel){
-      var nid=act.length?act[0].kif_id:"";uD(nid);
-      if(!midGame){if(nid)lB(kifStore[nid].kif_text,nid);else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";updateMemoUI();rG();}}
-    }else if(!currentKifId&&act.length){
-      var fid=act[0].kif_id;uD(fid);if(!isR)lB(kifStore[fid].kif_text,fid);
-    }else{
-      if(currentKifId&&kifStore[currentKifId])currentKifName=kifStore[currentKifId].title;
-      uD(currentKifId);
-      if(curUpd&&!midGame&&kifStore[currentKifId])lB(kifStore[currentKifId].kif_text,currentKifId);
-    }
-  }
-  if(mChg){
-    var ae=document.activeElement;
-    if(!ae||(ae.id!=="memo-ta-pc"&&ae.id!=="memo-ta-m"))updateMemoUI();
-  }
-  if(sChg&&!isR){
-    var brNow=getBranchesAt(st+1);
-    if(st===0&&brNow.length>=2)showSenteBranchInfo(brNow,1);
-  }
-  setSyncStatus("ok","☁️ 同期済み");
-  if(showUserToast||kChg||mChg||sChg)showToast("☁️ クラウド同期完了");
-}
-
-// 全体マージ同期（起動時・ログイン時・手動同期時・オンライン復帰時）
-async function syncWithCloud(showUserToast){
-  if(!fbDb||!currentUser)return;
-  if(!navigator.onLine){setSyncStatus("err","☁️ オフライン");return;}
-  if(isSyncing){pendingSync=true;return;}
-  isSyncing=true;setSyncStatus("ing","☁️ 同期中...");
-  var fb=window._fb,uid=currentUser.uid;
-
-  try{
-    console.log("[Firestore] Starting full sync for user:",uid);
-    var kSnap=await fb.getDocs(fb.collection(fbDb,"users",uid,"kifs"));
-    var eSnap=await fb.getDocs(fb.collection(fbDb,"users",uid,"practice_events"));
-
-    var kChg=false,curUpd=false,curDel=false,mChg=false,sChg=false;
-    var ckMap={},cmMap={},ceMap={},allKifIds={};
-
-    // 1. KIFマージ (updated_at / deleted_at 比較)
-    kSnap.forEach(function(docSnap){
-      var ck=docSnap.data();if(!ck||!ck.kif_id)return;
-      ckMap[ck.kif_id]=ck;
-      allKifIds[ck.kif_id]=true;
-      var lk=kifStore[ck.kif_id],cU=Number(ck.updated_at)||0,cD=ck.deleted_at?Number(ck.deleted_at):null,lU=lk?(Number(lk.updated_at)||0):0;
-      if(!lk||cU>lU||(cU===lU&&cD&&!lk.deleted_at)){
-        var wDel=lk?!!lk.deleted_at:false,pTx=lk?lk.kif_text:"",pTi=lk?lk.title:"";
-        kifStore[ck.kif_id]={kif_id:ck.kif_id,title:ck.title||"無題",kif_text:ck.kif_text||"",updated_at:cU,deleted_at:cD,dirty:false};
-        if(cD){if(!wDel){kChg=true;if(ck.kif_id===currentKifId)curDel=true;}}
-        else if(wDel||pTx!==ck.kif_text||pTi!==ck.title){kChg=true;if(ck.kif_id===currentKifId&&pTx!==ck.kif_text)curUpd=true;}
-      }
-    });
-
-    var kUp=[];
-    for(var kid in kifStore){
-      var li=kifStore[kid];if(!li)continue;
-      allKifIds[kid]=true;
-      var ci=ckMap[kid],cu2=ci?(Number(ci.updated_at)||0):0;
-      if(li.dirty||!ci||li.updated_at>cu2){
-        if(!li.deleted_at&&!li.kif_text)continue;
-        kUp.push({user_id:uid,kif_id:li.kif_id,title:li.title||"無題",kif_text:li.kif_text||"",updated_at:li.updated_at,deleted_at:li.deleted_at||null});
-      }
-    }
-    if(kUp.length){
-      await commitBatchChunks(kUp,function(batch,item){
-        batch.set(fb.doc(fbDb,"users",uid,"kifs",item.kif_id),item);
-      });
-      for(var u=0;u<kUp.length;u++){
-        var uk=kUp[u];
-        if(kifStore[uk.kif_id]&&kifStore[uk.kif_id].updated_at===uk.updated_at)kifStore[uk.kif_id].dirty=false;
-      }
-      console.log("[Firestore] Uploaded kifs:",kUp.length);
-    }
-
-    // 2. 局面メモマージ (users/{uid}/kifs/{kifId}/memos/{memoId} の updated_at 比較)
-    for(var mkLocal in memoStore){
-      if(memoStore[mkLocal]&&memoStore[mkLocal].kif_id)allKifIds[memoStore[mkLocal].kif_id]=true;
-    }
-    var kifIdList=Object.keys(allKifIds);
-    var memoSnaps=await Promise.all(kifIdList.map(function(kIdItem){
-      return fb.getDocs(fb.collection(fbDb,"users",uid,"kifs",kIdItem,"memos"));
-    }));
-
-    for(var msIdx=0;msIdx<memoSnaps.length;msIdx++){
-      memoSnaps[msIdx].forEach(function(docSnap){
-        var cm=docSnap.data();if(!cm||!cm.kif_id||!cm.branch_id||!cm.ply)return;
-        var mk=cm.kif_id+"::"+cm.branch_id+"::"+cm.ply;cmMap[mk]=cm;
-        var lm=memoStore[mk],cmU=Number(cm.updated_at)||0,lmU=lm?(Number(lm.updated_at)||0):0;
-        if(!lm||cmU>lmU){
-          var pM=lm?lm.memo_text:"";
-          memoStore[mk]={kif_id:cm.kif_id,branch_id:cm.branch_id,ply:Number(cm.ply)||1,memo_text:cm.memo_text||"",updated_at:cmU,dirty:false};
-          if(pM!==(cm.memo_text||""))mChg=true;
-        }
-      });
-    }
-
-    var mUp=[];
-    for(var mk2 in memoStore){
-      var lmi=memoStore[mk2];if(!lmi||!lmi.kif_id||!lmi.branch_id)continue;
-      var cmi=cmMap[mk2],cmu2=cmi?(Number(cmi.updated_at)||0):0;
-      if(lmi.dirty||!cmi||lmi.updated_at>cmu2){
-        var mId=memoDocId(lmi.kif_id,lmi.branch_id,lmi.ply);
-        mUp.push({user_id:uid,memo_id:mId,kif_id:lmi.kif_id,branch_id:lmi.branch_id,ply:lmi.ply,memo_text:lmi.memo_text||"",updated_at:lmi.updated_at});
-      }
-    }
-    if(mUp.length){
-      await commitBatchChunks(mUp,function(batch,item){
-        batch.set(fb.doc(fbDb,"users",uid,"kifs",item.kif_id,"memos",item.memo_id),item);
-      });
-      for(var w=0;w<mUp.length;w++){
-        var um=mUp[w],mk3=um.kif_id+"::"+um.branch_id+"::"+um.ply;
-        if(memoStore[mk3]&&memoStore[mk3].updated_at===um.updated_at)memoStore[mk3].dirty=false;
-      }
-      console.log("[Firestore] Uploaded memos:",mUp.length);
-    }
-
-    // 3. 練習履歴イベントマージ (users/{uid}/practice_events/{eventId} の和集合)
-    eSnap.forEach(function(docSnap){
-      var ce=docSnap.data();if(!ce||!ce.event_id||!ce.kif_id||!ce.branch_id)return;
-      ceMap[ce.event_id]=true;
-      if(!practiceEvents[ce.event_id]){
-        practiceEvents[ce.event_id]={
-          event_id:ce.event_id,
-          kif_id:ce.kif_id,
-          branch_id:ce.branch_id,
-          total_delta:Number(ce.total_delta)||1,
-          ok_delta:Number(ce.ok_delta)||0,
-          created_at:Number(ce.created_at)||0,
-          synced:true
-        };
-        sChg=true;
-      }else{
-        practiceEvents[ce.event_id].synced=true;
-      }
-    });
-
-    var eUp=[];
-    for(var pid in practiceEvents){
-      var pev=practiceEvents[pid];if(!pev||!pev.kif_id||!pev.branch_id)continue;
-      if(!pev.synced||!ceMap[pid]){
-        eUp.push({
-          event_id:pev.event_id,
-          user_id:uid,
-          kif_id:pev.kif_id,
-          branch_id:pev.branch_id,
-          total_delta:pev.total_delta,
-          ok_delta:pev.ok_delta,
-          created_at:pev.created_at
-        });
-      }
-    }
-    if(eUp.length){
-      await commitBatchChunks(eUp,function(batch,item){
-        batch.set(fb.doc(fbDb,"users",uid,"practice_events",item.event_id),item);
-      });
-      for(var z=0;z<eUp.length;z++){
-        var eid2=eUp[z].event_id;
-        if(practiceEvents[eid2])practiceEvents[eid2].synced=true;
-      }
-      console.log("[Firestore] Uploaded practice_events:",eUp.length);
-    }
-
-    refreshUIAfterCloudMerge(kChg,curUpd,curDel,mChg,sChg,showUserToast);
-  }catch(err){
-    console.error("[Firestore] syncWithCloud error:",err);
-    setSyncStatus("err","⚠️ 同期エラー");
-  }finally{
-    isSyncing=false;
-    if(pendingSync){
-      pendingSync=false;
-      syncWithCloud(false);
-    }
-  }
-}
-
-// KIF単位のサブコレクション users/{uid}/kifs/{kifId}/memos リアルタイム監視
-function ensureMemoRealtimeForKif(kifId){
-  if(!fbDb||!currentUser||!kifId||memoRealtimeUnsubs[kifId])return;
-  var fb=window._fb,uid=currentUser.uid;
-  try{
-    memoRealtimeUnsubs[kifId]=fb.onSnapshot(fb.collection(fbDb,"users",uid,"kifs",kifId,"memos"),function(snap){
-      if(snap.metadata.hasPendingWrites)return;
-      var mChg=false;
-      snap.docChanges().forEach(function(chg){
-        var cm=chg.doc.data();if(!cm||!cm.kif_id||!cm.branch_id||!cm.ply)return;
-        var mk=cm.kif_id+"::"+cm.branch_id+"::"+cm.ply;
-        var lm=memoStore[mk],cmU=Number(cm.updated_at)||0,lmU=lm?(Number(lm.updated_at)||0):0;
-        if(!lm||cmU>lmU){
-          var pM=lm?lm.memo_text:"";
-          memoStore[mk]={kif_id:cm.kif_id,branch_id:cm.branch_id,ply:Number(cm.ply)||1,memo_text:cm.memo_text||"",updated_at:cmU,dirty:false};
-          if(pM!==(cm.memo_text||""))mChg=true;
-        }
-      });
-      if(mChg){
-        console.log("[Firestore Realtime] Memo update received for kif:",kifId);
-        refreshUIAfterCloudMerge(false,false,false,true,false,false);
-      }
-    },function(err){console.warn("[Firestore Realtime] memos listener error:",err);});
-  }catch(e){
-    console.warn("[Firestore Realtime] ensureMemoRealtimeForKif error:",e);
-  }
-}
-
-// Firestore onSnapshot リアルタイム監視（無限同期ループ防止設計：読み取り反映のみ行い、再書き込みは行わない）
-function setupRealtimeSubscription(){
-  clearRealtimeSubscriptions();
-  if(!fbDb||!currentUser)return;
-  var fb=window._fb,uid=currentUser.uid;
-  try{
-    // 1. KIFリアルタイム監視: users/{uid}/kifs/{kifId}
-    var unsubKifs=fb.onSnapshot(fb.collection(fbDb,"users",uid,"kifs"),function(snap){
-      snap.docChanges().forEach(function(chg){
-        var d=chg.doc.data();
-        if(d&&d.kif_id)ensureMemoRealtimeForKif(d.kif_id);
-      });
-      if(snap.metadata.hasPendingWrites)return;
-      var kChg=false,curUpd=false,curDel=false;
-      snap.docChanges().forEach(function(chg){
-        var ck=chg.doc.data();if(!ck||!ck.kif_id)return;
-        var lk=kifStore[ck.kif_id],cU=Number(ck.updated_at)||0,cD=ck.deleted_at?Number(ck.deleted_at):null,lU=lk?(Number(lk.updated_at)||0):0;
-        if(!lk||cU>lU||(cU===lU&&cD&&!lk.deleted_at)){
-          var wDel=lk?!!lk.deleted_at:false,pTx=lk?lk.kif_text:"",pTi=lk?lk.title:"";
-          kifStore[ck.kif_id]={kif_id:ck.kif_id,title:ck.title||"無題",kif_text:ck.kif_text||"",updated_at:cU,deleted_at:cD,dirty:false};
-          if(cD){if(!wDel){kChg=true;if(ck.kif_id===currentKifId)curDel=true;}}
-          else if(wDel||pTx!==ck.kif_text||pTi!==ck.title){kChg=true;if(ck.kif_id===currentKifId&&pTx!==ck.kif_text)curUpd=true;}
-        }
-      });
-      if(kChg){
-        console.log("[Firestore Realtime] KIF update received");
-        refreshUIAfterCloudMerge(true,curUpd,curDel,false,false,false);
-      }
-    },function(err){console.warn("[Firestore Realtime] kifs listener error:",err);});
-
-    // 2. 局面メモリアルタイム監視: users/{uid}/kifs/{kifId}/memos/{memoId}
-    for(var kid in kifStore){
-      ensureMemoRealtimeForKif(kid);
-    }
-
-    // 3. 練習履歴イベントリアルタイム監視: users/{uid}/practice_events/{eventId}
-    var unsubEvents=fb.onSnapshot(fb.collection(fbDb,"users",uid,"practice_events"),function(snap){
-      if(snap.metadata.hasPendingWrites)return;
-      var sChg=false;
-      snap.docChanges().forEach(function(chg){
-        var ce=chg.doc.data();if(!ce||!ce.event_id||!ce.kif_id||!ce.branch_id)return;
-        if(!practiceEvents[ce.event_id]){
-          practiceEvents[ce.event_id]={
-            event_id:ce.event_id,
-            kif_id:ce.kif_id,
-            branch_id:ce.branch_id,
-            total_delta:Number(ce.total_delta)||1,
-            ok_delta:Number(ce.ok_delta)||0,
-            created_at:Number(ce.created_at)||0,
-            synced:true
-          };
-          sChg=true;
-        }
-      });
-      if(sChg){
-        console.log("[Firestore Realtime] Practice event received");
-        refreshUIAfterCloudMerge(false,false,false,false,true,false);
-      }
-    },function(err){console.warn("[Firestore Realtime] practice_events listener error:",err);});
-
-    realtimeUnsubs.push(unsubKifs,unsubEvents);
-  }catch(e){
-    console.error("[Firestore Realtime] setup error:",e);
-  }
-}
-
-function readDroppedKifFile(file){
-  var rdr=new FileReader();
-  rdr.onload=function(ev){
-    var buf=ev.target.result,tx="";
-    try{tx=new TextDecoder("utf-8",{fatal:true}).decode(buf);}catch(e){try{tx=new TextDecoder("shift-jis").decode(buf);}catch(e2){}}
-    if(tx&&tx.indexOf("\uFFFD")!==-1){try{tx=new TextDecoder("shift-jis").decode(buf);}catch(e3){}}
-    regK(file.name.replace(/\.[^/.]+$/,"")||"棋譜",tx);
-  };
-  rdr.readAsArrayBuffer(file);
-}
-
-window.addEventListener("online",function(){if(fbDb&&currentUser)syncWithCloud(true);});
-window.addEventListener("offline",function(){if(fbDb&&currentUser)setSyncStatus("err","☁️ オフライン");});
-window.addEventListener("dragover",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="flex";});
-window.addEventListener("dragleave",function(e){if(e.clientX<=0||e.clientY<=0){var d=document.getElementById("d-ovl");if(d)d.style.display="none";}});
-window.addEventListener("drop",function(e){e.preventDefault();var d=document.getElementById("d-ovl");if(d)d.style.display="none";var f=e.dataTransfer.files[0];if(f)readDroppedKifFile(f);});
-
-initB();loadAndMigrateLocalData();
-var initList=getActiveKifList(),firstKifId=initList.length?initList[0].kif_id:"";
-uD(firstKifId);if(firstKifId)lB(kifStore[firstKifId].kif_text,firstKifId);else{rawMoves=[];rG();}
-if(window._fb)initFirebaseClient(false);
-else window.addEventListener("fb-sdk-ready",function(){initFirebaseClient(false);});
-</script>
-</body>
-</html>
+      created_at:ev
