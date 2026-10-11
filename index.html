@@ -28,7 +28,7 @@ h2{font-size:1rem;margin:2px;display:flex;align-items:center;justify-content:cen
 .layout-wrapper{display:flex;justify-content:center;align-items:flex-start;max-width:850px;margin:0 auto;gap:15px;}
 #app-main{flex:1;width:100%;max-width:400px;margin:0 auto;}
 #sb{display:flex;visibility:hidden;height:24px;align-items:center;font-size:.85rem;font-weight:bold;margin:2px auto;max-width:390px;justify-content:space-between;padding:2px 8px;background:#e0e7ed;border-radius:4px;}
-#st{font-size:.95rem;font-weight:bold;margin:3px auto;max-width:390px;height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow-y:auto;line-height:1.35;overflow-anchor:none;}
+#st{font-size:.95rem;font-weight:bold;margin:3px auto;max-width:390px;height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow-y:auto;line-height:1.35;overflow-anchor:none;}
 #st-inner{width:100%;}
 #comment-area{height:64px;overflow-y:auto;text-align:left;padding:4px 8px;background:#fcfcfc;border:1px solid #ccc;border-radius:4px;margin:2px auto 4px auto;max-width:390px;font-size:12px;line-height:1.4;color:#333;}
 .pbar{margin:3px auto;max-width:390px;display:flex;gap:4px;}
@@ -810,15 +810,24 @@ function onC(x,y){
     var expMoveStr = exp.name;
     if(exp.rawLine) {
         var match = exp.rawLine.split('*')[0].trim();
-        if(match) expMoveStr = match;
+        if(match) {
+            expMoveStr = match.replace(/^\s*\d+\s+/, '');
+        }
     }
     
     anim(from,to,pt,isG?1:0,function(){
       if(st !== aSt2) return;
       if(mistakeCount >= 3) {
-          setStHtml('<span style="color:#c62828;font-weight:bold;">3回間違えました。正解手：' + escapeHtml(expMoveStr) + '</span>');
+          var hintHtml = '<div style="background:#ffebee; border:1px solid #ef9a9a; border-radius:4px; padding:2px 0; width:100%; text-align:center; line-height:1.1; box-sizing:border-box;">' +
+                         '<div style="color:#c62828; font-size:11px; font-weight:bold;">× ' + mistakeCount + '回不正解</div>' +
+                         '<div style="font-size:10px; color:#333; margin-top:1px;">正解手</div>' +
+                         '<div style="color:#b71c1c; font-size:16px; font-weight:bold; margin:1px 0;">' + escapeHtml(expMoveStr) + '</div>' +
+                         '<div style="font-size:10px; color:#555; margin-top:1px;">この手を自分で指してください</div>' +
+                         '</div>';
+          setStHtml(hintHtml);
       } else {
-          setStHtml('<span style="color:#c62828;font-weight:bold;">× 定跡外れ！</span>');
+          var remain = 3 - mistakeCount;
+          setStHtml('<span style="color:#c62828;font-weight:bold;">× 不正解（' + mistakeCount + '/3）—あと' + remain + '回で正解を表示</span>');
       }
       renderBoard(to);
       setTimeout(function(){
