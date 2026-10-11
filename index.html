@@ -687,8 +687,7 @@ function onC(x,y){
   if(!isMyTurn) return;
 
   if(branches.length>=2){
-    var hPrefix = isG ? "h_g_" : "h_";
-    var uKey=(isD?hPrefix+pt:from)+"->"+to,mB=[];
+    var uKey=(isD?"h_"+pt:from)+"->"+to,mB=[];
     for(var i=0;i<branches.length;i++)if(branches[i].coordKey===uKey)mB.push(branches[i]);
     if(mB.length>0){
       isMatch=true;chosen=mB[0];
@@ -697,8 +696,7 @@ function onC(x,y){
       if(chosen.index!==currentBlockIndex)buildSequenceFromBlock(chosen.index);exp=rawMoves[st];
     }
   }else {
-    var hPrefix = isG ? "h_g_" : "h_";
-    isMatch=isD?(exp.from===hPrefix+pt&&exp.to===to):(exp.from===from&&exp.to===to);
+    isMatch=isD?(exp.from==="h_"+pt&&exp.to===to):(exp.from===from&&exp.to===to);
   }
 
   var targetBranch=mStat||currentPracticeBranch||((branches.length>=2)?(parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:branches[0].branchId):null);
