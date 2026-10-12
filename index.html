@@ -55,7 +55,7 @@ td.w-cell{background:#ffcdd2!important;}
 .btn-b{padding:7px 9px;font-size:12px;border-radius:4px;border:none;font-weight:bold;cursor:pointer;color:#fff;}
 #rbar{display:none;background:#ffebee;border:1px solid #ef5350;border-radius:4px;padding:4px;margin:2px auto;max-width:390px;}
 #d-ovl{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(46,125,50,.85);z-index:2000;color:#fff;font-size:18px;font-weight:bold;align-items:center;justify-content:center;border:4px dashed #fff;pointer-events:none;}
-#bsheet{display:none;position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:3px solid #1976d2;box-shadow:0 -4px 16px rgba(0,0,0,.25);z-index:1500;padding:8px 12px;text-align:left;max-height:48vh;overflow-y:auto;}
+#bsheet{display:none;position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:3px solid #1976d2;box-shadow:0 -4px 16px rgba(0,0,0,.25);z-index:1500;padding:8px 12px;text-align:left;max-height:85vh;overflow-y:auto;}
 .bs-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
 .bs-title{font-size:13px;font-weight:bold;color:#1976d2;}
 .bs-btn{display:flex;justify-content:space-between;align-items:center;width:100%;background:#f8f9fa;border:1.5px solid #90caf9;padding:7px 10px;border-radius:5px;margin:4px 0;font-size:13px;cursor:pointer;}
@@ -63,6 +63,17 @@ td.w-cell{background:#ffcdd2!important;}
 .bs-stat{font-size:11px;color:#555;background:#e9ecef;padding:2px 6px;border-radius:4px;font-weight:normal;}
 #sync-toast{display:none;position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(33,33,33,.92);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:bold;z-index:2500;pointer-events:none;}
 .sync-sec{background:#f5f7f9;border:1px solid #cfd8dc;border-radius:4px;padding:8px;margin-bottom:8px;font-size:12px;}
+
+/* ツリーフロー用CSS */
+.tree-card {
+    border: 2px solid; border-radius: 6px; padding: 8px 12px; cursor: pointer;
+    min-width: 180px; max-width: 240px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    white-space: normal; line-height: 1.3;
+}
+.tree-card.green { background: #e8f5e9; border-color: #66bb6a; color: #1b5e20; }
+.tree-card.yellow { background: #fffde7; border-color: #fbc02d; color: #f57f17; }
+.tree-card.red { background: #ffebee; border-color: #ef5350; color: #b71c1c; }
+.tree-card.gray { background: #f5f5f5; border-color: #e0e0e0; color: #616161; }
 </style>
 </head>
 <body>
@@ -99,6 +110,7 @@ td.w-cell{background:#ffcdd2!important;}
       <button class="btn-b" style="background:#455a64;" onclick="showAllBranchesModal()">🌲 全分岐</button>
       <button class="btn-b" style="background:#6a1b9a;" onclick="jumpToPly()">⏩ 手数</button>
       <button class="btn-b" style="background:#78909c;" onclick="rG()">やり直す</button>
+      <button class="btn-b" style="background:#d32f2f;" onclick="resetStats()">🗑️ 成績リセット</button>
     </div>
   </div>
 </div>
@@ -146,24 +158,50 @@ const firebaseConfig = {
 };
 const FIREBASE_CONFIG = firebaseConfig;
 
-var kifStore={},practiceEvents={},branchStats={},skifs={};
-var parsedTree=[],currentKifId="",currentKifName="",currentBlockIndex=0,rawMoves=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[],cCnt=0,hFail=false,isR=false,rTurn=0,rTree=[],rCurBlock=0,rPly=0;
+var kifStore={}, skifs={};
+// V3 成績管理用
+var practiceEventsV3={}, branchStatsV3={};
+var sessionFirstInput={}, sessionCompleted={};
+var statsResetTime = 0;
+
+var parsedTree=[],currentKifId="",currentKifName="",currentBlockIndex=0,rawMoves=[],st=0,sF=null,bS={},sHnd={},gHnd={},hI=null,isA=false,hst=[],isR=false,rTurn=0,rTree=[],rCurBlock=0,rPly=0;
 var oppTimer=null,oppTimerVersion=0,currentPracticeBranch=null;
 var fbApp=null,fbAuth=null,fbDb=null,fbInitPromise=null,authUnsub=null,realtimeUnsubs=[],currentUser=null,isSyncing=false,pendingSync=false;
 var cm={'１':1,'２':2,'３':3,'４':4,'５':5,'６':6,'７':7,'８':8,'９':9,'1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9};
 var zn=["","１","２","３","４","５","６","７","８","９"],kn=["","一","二","三","四","五","六","七","八","九"];
 var unp={"と":"歩","成香":"香","成桂":"桂","成銀":"銀","馬":"角","竜":"飛","龍":"飛"},pmap={"角":"馬","飛":"竜","歩":"と","銀":"成銀","桂":"成桂","香":"成香"};
 
-// --- 成績管理用変数 ---
-var currentPracticeEventId = null;
 var mistakeCount = 0;
 
 function clearMistakeCount() {
   mistakeCount = 0;
-  currentPracticeEventId = null;
+}
+function clearSessionRecords() {
+  sessionFirstInput = {};
+  sessionCompleted = {};
 }
 
-// --- 後手モード管理 ---
+// 指し手の表示形式を「2六 → 2五（歩）」等に変換
+function formatMove(m) {
+  if (!m) return "";
+  var kanjiDan = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+  var toStr = m.tx + kanjiDan[m.ty];
+  
+  var pieceStr = m.name;
+  pieceStr = pieceStr.replace(/^[１２３４５６７８９123456789][一二三四五六七八九]/, "");
+  pieceStr = pieceStr.replace(/^同[\s ]*/, "");
+  var isDrop = pieceStr.indexOf("打") !== -1;
+  pieceStr = pieceStr.replace("打", "");
+  
+  if (m.from.indexOf("h_") === 0) {
+      return "持駒 → " + toStr + "（" + pieceStr + "打）";
+  } else {
+      var p = m.from.split(",");
+      var fromStr = p[0] + kanjiDan[parseInt(p[1], 10)];
+      return fromStr + " → " + toStr + "（" + pieceStr + "）";
+  }
+}
+
 var isGoteMode = false;
 function togglePMode(){
   isGoteMode = !isGoteMode;
@@ -195,7 +233,7 @@ function computeBranchId(sp,seq){
 function saveLocalStores(){
   try{
     localStorage.setItem("skifs_kif_store_v2",JSON.stringify(kifStore));
-    localStorage.setItem("skifs_stat_events_v2",JSON.stringify(practiceEvents));
+    localStorage.setItem("skifs_stat_events_v3",JSON.stringify(practiceEventsV3));
   }catch(e){
     alert("ローカルストレージへの保存に失敗しました。容量不足かプライベートブラウズの可能性があります。");
   }
@@ -203,63 +241,89 @@ function saveLocalStores(){
   skifs=lk;
   try{
     localStorage.setItem("skifs_min",JSON.stringify(skifs));
-    localStorage.setItem("skifs_bstat",JSON.stringify(branchStats));
+    localStorage.setItem("skifs_bstat_v3",JSON.stringify(branchStatsV3));
+    localStorage.setItem("skifs_stats_reset_time", statsResetTime.toString());
   }catch(e){}
 }
-function rebuildBranchStatsFromEvents(){
+function rebuildBranchStatsV3FromEvents(){
   var ns={};
-  for(var eid in practiceEvents){
-    var ev=practiceEvents[eid];if(!ev||!ev.kif_id||!ev.branch_id)continue;
-    var key=ev.kif_id+"::"+ev.branch_id;
-    if(!ns[key])ns[key]={total:0,ok:0,h0:0,h1:0,h2:0,view:0};
-    ns[key].total+=(typeof ev.total_delta==="number"?ev.total_delta:1);
-    ns[key].ok+=(typeof ev.ok_delta==="number"?ev.ok_delta:0);
-    ns[key].h0 += (typeof ev.h0_delta==="number"?ev.h0_delta:0);
-    ns[key].h1 += (typeof ev.h1_delta==="number"?ev.h1_delta:0);
-    ns[key].h2 += (typeof ev.h2_delta==="number"?ev.h2_delta:0);
-    ns[key].view += (typeof ev.view_delta==="number"?ev.view_delta:0);
+  var latestReset = 0;
+  for(var eid in practiceEventsV3) {
+      if(practiceEventsV3[eid].type === "reset" && practiceEventsV3[eid].created_at > latestReset) {
+          latestReset = practiceEventsV3[eid].created_at;
+      }
   }
-  branchStats=ns;try{localStorage.setItem("skifs_bstat",JSON.stringify(branchStats));}catch(e){}
+  // localStorage上の最新リセット時刻と比較
+  if(latestReset > statsResetTime) {
+      statsResetTime = latestReset;
+      try{localStorage.setItem("skifs_stats_reset_time", statsResetTime.toString());}catch(e){}
+  }
+
+  for(var eid in practiceEventsV3){
+    var ev=practiceEventsV3[eid];
+    if(!ev||!ev.kif_id||!ev.branch_id)continue;
+    if(ev.created_at < statsResetTime) continue;
+    
+    var key=ev.kif_id+"::"+ev.branch_id;
+    if(!ns[key])ns[key]={tryCount:0, count:0, ok:0};
+    if(ev.type === "complete") {
+      ns[key].tryCount++;
+    } else if (ev.type === "input") {
+      ns[key].count++;
+      if (ev.is_ok) ns[key].ok++;
+    }
+  }
+  branchStatsV3=ns;
+  try{localStorage.setItem("skifs_bstat_v3",JSON.stringify(branchStatsV3));}catch(e){}
 }
+function getBranchStatV3(kId, bId) {
+    var key = kId + "::" + bId;
+    var s = branchStatsV3[key];
+    if (!s) return { tryCount: 0, count: 0, ok: 0 };
+    return { tryCount: s.tryCount || 0, count: s.count || 0, ok: s.ok || 0 };
+}
+
+window.resetStats = function() {
+    if (confirm("過去の学習データ（勉強回数、正答率など）をすべてリセットしますか？\n※棋譜やコメントは削除されません。")) {
+        var eid = genUuid();
+        statsResetTime = Date.now();
+        var ev = {
+            event_id: eid,
+            kif_id: "ALL",
+            branch_id: "ALL",
+            type: "reset",
+            created_at: statsResetTime,
+            synced: false
+        };
+        practiceEventsV3[eid] = ev;
+        saveLocalStores();
+        pushSinglePracticeEventV3Async(ev);
+        rebuildBranchStatsV3FromEvents();
+        alert("学習データをリセットしました。");
+        rG();
+    }
+}
+
 function getActiveKifList(){
   var a=[];for(var id in kifStore){var k=kifStore[id];if(k&&!k.deleted_at&&k.kif_text)a.push(k);}
   return a.sort(function(x,y){return x.title!==y.title?x.title.localeCompare(y.title,"ja"):x.kif_id.localeCompare(y.kif_id);});
 }
 function loadAndMigrateLocalData(){
   try{kifStore=JSON.parse(localStorage.getItem("skifs_kif_store_v2"))||{};}catch(e){kifStore={};}
-  try{practiceEvents=JSON.parse(localStorage.getItem("skifs_stat_events_v2"))||{};}catch(e){practiceEvents={};}
-  if(localStorage.getItem("skifs_v2_id_migrated")==="1"){rebuildBranchStatsFromEvents();return;}
-  var oldK={},oldS={},baseTs=1700000000000,chg=false,t2id={},tb2id={};
-  try{oldK=JSON.parse(localStorage.getItem("skifs_min"))||{};}catch(e){}
-  try{oldS=JSON.parse(localStorage.getItem("skifs_bstat"))||{};}catch(e){}
-  delete oldK["エルモ囲い（基本形）"];
-  for(var eid in kifStore){var ek=kifStore[eid];if(ek&&!ek.deleted_at){t2id[ek.title]=ek.kif_id;tb2id[ek.title]={};var etr=parseFullKif(ek.kif_text);for(var i=0;i<etr.length;i++)tb2id[ek.title][etr[i].name]=etr[i].branchId;}}
-  for(var t in oldK){
-    var tx=oldK[t];if(!tx||typeof tx!=="string"||t2id[t])continue;
-    var kid="kif_"+fnv1aHash(t+"::"+tx.replace(/\r\n/g,"\n").trim());
-    if(!kifStore[kid]){kifStore[kid]={kif_id:kid,title:t,kif_text:tx,updated_at:baseTs,deleted_at:null,dirty:true};chg=true;}
-    t2id[t]=kid;tb2id[t]={};var ptr=parseFullKif(tx);for(var b=0;b<ptr.length;b++)tb2id[t][ptr[b].name]=ptr[b].branchId;
-  }
-  var cev={};
-  for(var pid in practiceEvents){
-    var pev=practiceEvents[pid];if(!pev)continue;
-    if(pev.kif_id&&pev.branch_id)cev[pid]=pev;
-    else if(pev.kif_name&&t2id[pev.kif_name]){
-      var tk2=t2id[pev.kif_name],bid2=(tb2id[pev.kif_name]&&tb2id[pev.kif_name][pev.branch_name])||(pev.branch_name==="本譜"?"br_main":"br_legacy_"+fnv1aHash(pev.branch_name));
-      var nid=pid.indexOf("legacy_init::")===0?("leg_"+fnv1aHash(tk2+"::"+bid2)):pid;
-      cev[nid]={event_id:nid,kif_id:tk2,branch_id:bid2,total_delta:Number(pev.total_delta)||1,ok_delta:Number(pev.ok_delta)||0,h0_delta:Number(pev.h0_delta)||0,h1_delta:Number(pev.h1_delta)||0,h2_delta:Number(pev.h2_delta)||0,view_delta:Number(pev.view_delta)||0,created_at:Number(pev.created_at)||baseTs,synced:false};chg=true;
-    }
-  }
-  practiceEvents=cev;
-  for(var sk in oldS){
-    if(sk.indexOf("kif_")===0)continue;
-    var so=oldS[sk],sp=sk.split("::");if(!so||!so.total||sp.length<2)continue;
-    var skId=t2id[sp[0]],sBn=sp.slice(1).join("::");if(!skId)continue;
-    var sBid=(tb2id[sp[0]]&&tb2id[sp[0]][sBn])||(sBn==="本譜"?"br_main":"br_legacy_"+fnv1aHash(sBn)),lid="leg_"+fnv1aHash(skId+"::"+sBid);
-    if(!practiceEvents[lid]){practiceEvents[lid]={event_id:lid,kif_id:skId,branch_id:sBid,total_delta:Number(so.total)||1,ok_delta:Number(so.ok)||0,h0_delta:Number(so.h0)||0,h1_delta:Number(so.h1)||0,h2_delta:Number(so.h2)||0,view_delta:Number(so.view)||0,created_at:baseTs,synced:false};chg=true;}
-  }
-  try{localStorage.setItem("skifs_v2_id_migrated","1");}catch(e){}
-  rebuildBranchStatsFromEvents();if(chg)saveLocalStores();
+  try{practiceEventsV3=JSON.parse(localStorage.getItem("skifs_stat_events_v3"))||{};}catch(e){practiceEventsV3={};}
+  statsResetTime = parseInt(localStorage.getItem("skifs_stats_reset_time") || "0", 10);
+  
+  var baseTs=1700000000000,chg=false,t2id={};
+  try{var oldK=JSON.parse(localStorage.getItem("skifs_min"))||{};
+      delete oldK["エルモ囲い（基本形）"];
+      for(var eid in kifStore){var ek=kifStore[eid];if(ek&&!ek.deleted_at)t2id[ek.title]=ek.kif_id;}
+      for(var t in oldK){
+        var tx=oldK[t];if(!tx||typeof tx!=="string"||t2id[t])continue;
+        var kid="kif_"+fnv1aHash(t+"::"+tx.replace(/\r\n/g,"\n").trim());
+        if(!kifStore[kid]){kifStore[kid]={kif_id:kid,title:t,kif_text:tx,updated_at:baseTs,deleted_at:null,dirty:true};chg=true;}
+      }
+  }catch(e){}
+  rebuildBranchStatsV3FromEvents();if(chg)saveLocalStores();
 }
 
 function showToast(msg){var t=document.getElementById("sync-toast");if(!t)return;t.textContent=msg;t.style.display="block";clearTimeout(t._tid);t._tid=setTimeout(function(){t.style.display="none";},2600);}
@@ -269,7 +333,6 @@ function scheduleOpponent(d){cancelOppTimer();var v=oppTimerVersion,ek=currentKi
 function pro(pt,nm,isD){return(!isD&&nm.indexOf("成")!==-1&&nm.indexOf("不成")===-1&&pt.indexOf("成")===-1)?(pmap[pt]||pt):pt;}
 function escapeHtml(s){return s?String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"):"";}
 
-// --- コメント専用エリア表示用関数 ---
 function clearCommentInfo(){
   var el=document.getElementById("comment-area");
   if(el){el.innerHTML="";el.scrollTop=0;}
@@ -291,64 +354,46 @@ function showPostMoveBranches(branches,chosen,turnMark){
   var others=[],seen={};
   for(var i=0;i<branches.length;i++){
     if(branches[i].moveKey===chosen.moveKey)continue;
-    var m=turnMark+escapeHtml(branches[i].moveName);if(!seen[m]){seen[m]=true;others.push(m);}
+    var m=turnMark+escapeHtml(formatMove(branches[i].expObj));if(!seen[m]){seen[m]=true;others.push(m);}
   }
   return others.length?'<div style="margin-top:2px;font-size:12px;color:#d81b60;font-weight:bold;">🔀 ほかにも '+others.join(" ／ ")+' の分岐がありました</div>':"";
 }
-function showBranchInfo(branches,currentPly){
-  var labels=["A","B","C","D","E","F","G","H"],arr=[];
-  for(var i=0;i<branches.length;i++){
-    var k=currentKifId+"::"+branches[i].branchId,stCnt=branchStats[k]?branchStats[k].total:0;
-    arr.push(escapeHtml(labels[i]||(i+1))+"："+stCnt+"回");
-  }
-  addCommentInfo('<div style="margin-top:2px;"><span style="color:#d81b60;font-weight:bold;font-size:12px;">🔀 この局面には分岐があります</span><br><span style="font-size:12px;color:#555;">'+arr.join(" ／ ")+'</span></div>');
-}
 
-// --- 成績の永続化記録 ---
-function recordStat(isMatch) {
-  var nextPly = st + 1;
-  var branches = getBranchesAt(nextPly);
-  var targetBranch = currentPracticeBranch || ((branches.length>=2) ? (parsedTree[currentBlockIndex] ? parsedTree[currentBlockIndex].branchId : branches[0].branchId) : null);
-  
-  if(!currentKifId || !targetBranch) return;
-
-  var eid = currentPracticeEventId;
-  var ev = null;
-  
-  if(!eid) {
-    eid = genUuid();
-    currentPracticeEventId = eid;
-    ev = {
-      event_id: eid,
-      kif_id: currentKifId,
-      branch_id: targetBranch,
-      total_delta: 1,
-      ok_delta: (isMatch && mistakeCount === 0) ? 1 : 0, 
-      h0_delta: 0,
-      h1_delta: 0,
-      h2_delta: 0,
-      view_delta: 0,
-      created_at: Date.now(),
-      synced: false
-    };
-    practiceEvents[eid] = ev;
-  } else {
-    ev = practiceEvents[eid];
-    if(!ev) return;
-  }
-
-  ev.synced = false;
+function recordStatV3(bId, isOk) {
+  if(!currentKifId || !bId) return;
+  var eid = genUuid();
+  var ev = {
+    event_id: eid,
+    kif_id: currentKifId,
+    branch_id: bId,
+    type: "input",
+    is_ok: isOk,
+    created_at: Date.now(),
+    synced: false
+  };
+  practiceEventsV3[eid] = ev;
   saveLocalStores();
-  pushSinglePracticeEventAsync(ev);
-  rebuildBranchStatsFromEvents();
+  pushSinglePracticeEventV3Async(ev);
+  rebuildBranchStatsV3FromEvents();
 }
 
-function getBranchStatStr(kId,bId){
-  var s=branchStats[kId+"::"+bId];
-  if(!s||!s.total) return "未練習";
-  var rate = Math.round((s.ok/s.total)*100);
-  return "初回正答率 "+rate+"%";
+function recordCompletionV3(bId) {
+  if(!currentKifId || !bId) return;
+  var eid = genUuid();
+  var ev = {
+    event_id: eid,
+    kif_id: currentKifId,
+    branch_id: bId,
+    type: "complete",
+    created_at: Date.now(),
+    synced: false
+  };
+  practiceEventsV3[eid] = ev;
+  saveLocalStores();
+  pushSinglePracticeEventV3Async(ev);
+  rebuildBranchStatsV3FromEvents();
 }
+
 function oM(id){document.getElementById(id).style.display="flex";}
 function cM(id){document.getElementById(id).style.display="none";}
 function closeBSheet(){document.getElementById("bsheet").style.display="none";}
@@ -393,7 +438,7 @@ function swKif(){
   cancelOppTimer();if(isR)eRec();
   var kId=document.getElementById("sel").value;
   if(kId&&kifStore[kId]&&!kifStore[kId].deleted_at)lB(kifStore[kId].kif_text,kId);
-  else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";clearCommentInfo();clearMistakeCount();rG();}
+  else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";clearCommentInfo();clearMistakeCount();clearSessionRecords();rG();}
 }
 function delKif(){
   var delId=document.getElementById("sel").value;
@@ -401,7 +446,7 @@ function delKif(){
   cancelOppTimer();var now=Date.now();
   kifStore[delId].deleted_at=now;kifStore[delId].updated_at=now;kifStore[delId].dirty=true;saveLocalStores();
   var list=getActiveKifList(),nid=list.length?list[0].kif_id:"";uD(nid);
-  if(nid)lB(kifStore[nid].kif_text,nid);else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";clearCommentInfo();clearMistakeCount();rG();}
+  if(nid)lB(kifStore[nid].kif_text,nid);else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";clearCommentInfo();clearMistakeCount();clearSessionRecords();rG();}
   pushSingleKifAsync(delId);
 }
 
@@ -457,12 +502,28 @@ function parseFullKif(tx){
   return blocks;
 }
 
+function buildParsedTreeHierarchy() {
+  for (var i = 0; i < parsedTree.length; i++) {
+    parsedTree[i].children = [];
+  }
+  for (var i = 0; i < parsedTree.length; i++) {
+    if (i === 0) continue;
+    var p = parsedTree[i].parentIdx;
+    if (p >= 0 && p < parsedTree.length && p !== i) {
+      parsedTree[p].children.push(parsedTree[i]);
+    } else {
+      parsedTree[0].children.push(parsedTree[i]);
+    }
+  }
+}
+
 function getFullSequenceForBlock(idx){return parsedTree[idx]?parsedTree[idx].fullSeq||[]:[];}
 function buildSequenceFromBlock(idx){if(!parsedTree.length)return;currentBlockIndex=(idx<0||idx>=parsedTree.length)?0:idx;rawMoves=getFullSequenceForBlock(currentBlockIndex);}
 function lB(tx,kId){
   cancelOppTimer();if(kId&&kifStore[kId]){currentKifId=kId;currentKifName=kifStore[kId].title;}
   try{ parsedTree=parseFullKif(tx); }catch(e){ parsedTree=[]; }
-  if(!parsedTree.length){parsedTree=[];rawMoves=[];clearCommentInfo();clearMistakeCount();rG();return;}
+  if(!parsedTree.length){parsedTree=[];rawMoves=[];clearCommentInfo();clearMistakeCount();clearSessionRecords();rG();return;}
+  buildParsedTreeHierarchy();
   buildSequenceFromBlock(0);rG();
 }
 function getBranchesAt(ply){
@@ -489,16 +550,67 @@ function addBsBtn(list,icon,boldTxt,subTxt,statTxt,onClick){
   if(statTxt){var st=document.createElement("span");st.className="bs-stat";st.textContent=statTxt;btn.appendChild(st);}
   btn.onclick=onClick;list.appendChild(btn);
 }
+
+function buildTreeHtml(node, prefix, isLast) {
+    var html = '<div style="display:flex; align-items:flex-start; margin-bottom:8px; font-family:monospace; font-size:14px; white-space:pre;">';
+    html += '<div style="color:#999; padding-top:6px;">' + escapeHtml(prefix + (node.index===0 ? "" : (isLast ? "└─ " : "├─ "))) + '</div>';
+
+    var stats = getBranchStatV3(currentKifId, node.branchId);
+    var rateStr = stats.count > 0 ? Math.round((stats.ok / stats.count) * 100) + "%" : "未練習";
+    var colorClass = "gray";
+    if (stats.count > 0) {
+        var r = Math.round((stats.ok / stats.count) * 100);
+        if (r >= 80) colorClass = "green";
+        else if (r >= 50) colorClass = "yellow";
+        else colorClass = "red";
+    }
+
+    var title = node.index === 0 ? "⭐ 本譜" : node.name + " (" + node.startPly + "手目)";
+    html += '<div class="tree-card ' + colorClass + '" onclick="selectBranchNode(' + node.index + ')">';
+    html += '<div style="font-weight:bold; font-size:14px; font-family:sans-serif;">' + escapeHtml(title) + '</div>';
+    html += '<div style="font-size:12px; margin-top:4px; font-family:sans-serif; color:inherit; opacity:0.9;">勉強: ' + stats.tryCount + '回 / 正答率: ' + rateStr + '</div>';
+    html += '</div></div>';
+
+    var nextPrefix = prefix + (node.index===0 ? "" : (isLast ? "   " : "│  "));
+    for (var i = 0; i < node.children.length; i++) {
+        html += buildTreeHtml(node.children[i], nextPrefix, i === node.children.length - 1);
+    }
+    return html;
+}
+
+window.selectBranchNode = function(idx) {
+    cancelOppTimer();
+    closeBSheet();
+    buildSequenceFromBlock(idx);
+    currentPracticeBranch = parsedTree[idx].branchId;
+    var stPly = parsedTree[idx].startPly > 1 ? parsedTree[idx].startPly - 1 : 0;
+    jumpToExactPly(stPly, true, false);
+};
+
 function showBranchSheet(branches,currentPly){
   var list=document.getElementById("bs-list");list.innerHTML="";
   document.getElementById("bs-title").textContent="🔀 "+currentPly+"手目の分岐ルート選択";
   for(var i=0;i<branches.length;i++)(function(b){
-    addBsBtn(list,b.index===0?"⭐ ":"🔀 ",b.moveName," ("+b.name+")",getBranchStatStr(currentKifId,b.branchId),function(){
+    var stats = getBranchStatV3(currentKifId, b.branchId);
+    var rateStr = stats.count > 0 ? Math.round((stats.ok / stats.count) * 100) + "%" : "未練習";
+    var statTxt = "勉強: " + stats.tryCount + "回 / 正答率: " + rateStr;
+    addBsBtn(list,b.index===0?"⭐ ":"🔀 ", formatMove(b.expObj) || b.moveName, " ("+b.name+")", statTxt, function(){
       cancelOppTimer();closeBSheet();svH();buildSequenceFromBlock(b.index);currentPracticeBranch=b.branchId;jumpToExactPly(currentPly-1,true,true);
     });
   })(branches[i]);
   document.getElementById("bsheet").style.display="block";
 }
+
+function showBranchInfo(branches,currentPly){
+  var labels=["A","B","C","D","E","F","G","H"],arr=[];
+  for(var i=0;i<branches.length;i++){
+    var k=currentKifId+"::"+branches[i].branchId, s=branchStatsV3[k];
+    var count = s ? s.tryCount : 0;
+    arr.push(escapeHtml(labels[i]||(i+1))+"：勉強"+count+"回");
+  }
+  addCommentInfo('<div style="margin-top:2px;"><span style="color:#d81b60;font-weight:bold;font-size:12px;">🔀 この局面には分岐があります</span><br><span style="font-size:12px;color:#555;">'+arr.join(" ／ ")+'</span></div>');
+}
+
 function showBranchModalManual(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var cp=st+1,bAt=getBranchesAt(cp);
@@ -515,14 +627,9 @@ function showBranchModalManual(){
 }
 function showAllBranchesModal(){
   if(!parsedTree.length){alert("棋譜がありません");return;}
-  var list=document.getElementById("bs-list");list.innerHTML="";
+  var list=document.getElementById("bs-list");
+  list.innerHTML = '<div style="padding:10px 4px; overflow-x:auto;">' + buildTreeHtml(parsedTree[0], "", true) + '</div>';
   document.getElementById("bs-title").textContent="🌲 全分岐ツリーから選択";
-  for(var i=0;i<parsedTree.length;i++)(function(idx){
-    var b=parsedTree[idx];
-    addBsBtn(list,idx===0?"⭐ ":"🔀 ",idx===0?"本譜":b.name,"",getBranchStatStr(currentKifId,b.branchId),function(){
-      cancelOppTimer();closeBSheet();buildSequenceFromBlock(idx);currentPracticeBranch=idx>0?b.branchId:null;jumpToExactPly(b.startPly>1?b.startPly-1:0,true,false);
-    });
-  })(i);
   document.getElementById("bsheet").style.display="block";
 }
 
@@ -540,17 +647,18 @@ function applyMoveToBoard(m){
   if(bS[m.to]){var cap=unp[bS[m.to].t]||bS[m.to].t;if(isG)gHnd[cap]=(gHnd[cap]||0)+1;else sHnd[cap]=(sHnd[cap]||0)+1;}
   bS[m.to]={t:pt,g:isG?1:0};
 }
+
 function uScr(){
   var el=document.getElementById("sb");
   if(isR||!rawMoves||!rawMoves.length){el.style.visibility="hidden";return;}
   el.style.visibility="visible";
-  var ps = isGoteMode ? Math.floor(st/2) : Math.ceil(st/2);
-  var rt = ps===0?100:Math.min(100,Math.round((cCnt/ps)*100));
   var curB = parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].name:"本譜";
-  
-  el.innerHTML='<span>['+escapeHtml(curB)+'] '+st+'/'+rawMoves.length+'手</span><span>初回正答率: '+rt+'%</span>';
+  var stats = getBranchStatV3(currentKifId, currentPracticeBranch);
+  var rateStr = stats.count > 0 ? Math.round((stats.ok / stats.count) * 100) + "%" : "未練習";
+  el.innerHTML='<span>['+escapeHtml(curB)+'] '+st+'/'+rawMoves.length+'手</span><span>勉強回数: '+stats.tryCount+'回 / 正答率: '+rateStr+'</span>';
 }
-function svH(){hst.push({st:st,blk:currentBlockIndex,cc:cCnt,hf:hFail,cpb:currentPracticeBranch,cpeId:currentPracticeEventId});}
+
+function svH(){hst.push({st:st,blk:currentBlockIndex,cpb:currentPracticeBranch,mc:mistakeCount});}
 
 function uM(){
   cancelOppTimer();if(isA)return;closeBSheet();
@@ -567,35 +675,38 @@ function uM(){
   
   var tb=currentBlockIndex;while(tb>0&&parsedTree[tb]&&tp<parsedTree[tb].startPly-1)tb=parsedTree[tb].parentIdx;
   if(tb!==currentBlockIndex)buildSequenceFromBlock(tb);
-  var rCC=null,rHF=false,rCPB=null;
+  var rCPB=null, rMC=0;
   while(hst.length>0&&hst[hst.length-1].st>=tp){
     var p=hst.pop();
-    if(p.st===tp){rCC=p.cc;rHF=p.hf;rCPB=p.cpb;}
+    if(p.st===tp){rCPB=p.cpb; rMC=p.mc;}
   }
-  if(rCC!==null){
-    cCnt=rCC;hFail=rHF;currentPracticeBranch=rCPB;
+  if(rCPB!==null){
+    currentPracticeBranch=rCPB;
+    mistakeCount=rMC||0;
   }
   else{
-    var ms=isGoteMode ? Math.floor(tp/2) : Math.ceil(tp/2);
-    if(cCnt>ms)cCnt=ms;
-    hFail=false;currentPracticeBranch=tb>0?parsedTree[tb].branchId:null;
+    currentPracticeBranch=tb>0?parsedTree[tb].branchId:null;
   }
   jumpToExactPly(tp,false,true);
 }
+
 function jumpToExactPly(playCount,skipBranch,preserveState){
   cancelOppTimer();closeBSheet();
-  var sHst=preserveState?hst.slice():[],sCC=preserveState?cCnt:0,sHF=preserveState?hFail:false;
+  var sHst=preserveState?hst.slice():[];
   initB();for(var i=0;i<rawMoves.length;i++){if(rawMoves[i].ply>playCount)break;applyMoveToBoard(rawMoves[i]);}
-  st=playCount;sF=null;hI=null;isA=false;hst=sHst;cCnt=sCC;hFail=sHF;
+  st=playCount;sF=null;hI=null;isA=false;hst=sHst;
   
   clearMistakeCount();
+  if (!preserveState) {
+      currentPracticeBranch = parsedTree[currentBlockIndex] ? parsedTree[currentBlockIndex].branchId : null;
+  }
   
   var nextPly=playCount+1,branches=skipBranch?[]:getBranchesAt(nextPly);
   
   clearCommentInfo();
   if(st>0&&rawMoves[st-1]&&rawMoves[st-1].comment){
     var lm=rawMoves[st-1];
-    addCommentInfo(formatKifCommentHtml(lm.comment,lm.ply+"手目("+(lm.ply%2===1?"▲":"△")+lm.name+"):"));
+    addCommentInfo(formatKifCommentHtml(lm.comment,lm.ply+"手目("+(lm.ply%2===1?"▲":"△")+formatMove(lm)+"):"));
   }
   
   var isMyTurn = (!isGoteMode && playCount%2===0) || (isGoteMode && playCount%2===1);
@@ -615,13 +726,14 @@ function jumpToExactPly(playCount,skipBranch,preserveState){
   }
   uScr();renderBoard();
 }
+
 function jumpToPly(){
   if(!rawMoves.length){alert("棋譜が読み込まれていません");return;}
   var max=rawMoves.length,inp=prompt("何手目まで進めて練習しますか？ (0〜"+max+"手目):",st.toString());if(inp===null)return;
   var t=parseInt(inp,10);if(isNaN(t)||t<0||t>max){alert("0から"+max+"の数値を入力してください");return;}
   cancelOppTimer();var tb=currentBlockIndex;while(tb>0&&parsedTree[tb]&&t<parsedTree[tb].startPly-1)tb=parsedTree[tb].parentIdx;
   if(tb!==currentBlockIndex)buildSequenceFromBlock(tb);
-  currentPracticeBranch=tb>0?parsedTree[tb].branchId:null;jumpToExactPly(t,false,false);
+  jumpToExactPly(t,false,false);
 }
 
 function renderBoard(wK){
@@ -674,6 +786,7 @@ function renderBoard(wK){
     (viewGote?sh:gh).appendChild(d);
   })(gp);
 }
+
 function anim(fk,tk,tx,isG,cb){
   var frEl=(fk.indexOf("h_")===0)?document.getElementById((isG?"hg_":"hs_")+fk.replace("h_g_","").replace("h_","")):document.getElementById("c_"+fk);
   if(!frEl)frEl=document.getElementById(isG?"gh":"sh");
@@ -689,6 +802,7 @@ function anim(fk,tk,tx,isG,cb){
   requestAnimationFrame(function(){requestAnimationFrame(function(){fl.style.transform="translate3d("+ex+"px,"+ey+"px,0)"+(isRotated?" rotate(180deg)":"");});});
   setTimeout(function(){if(fl.parentNode)fl.parentNode.removeChild(fl);cb();},190);
 }
+
 function autoPlayOpponent(){
   if(isR||st>=rawMoves.length)return;
   var isOppTurn = (!isGoteMode && st%2===1) || (isGoteMode && st%2===0);
@@ -706,11 +820,11 @@ function autoPlayOpponent(){
     bS[exp.to]={t:pt,g:isG?1:0};
     
     var turnMark = isG ? "△" : "▲";
-    var gHtml=formatKifCommentHtml(exp.comment,turnMark+exp.name+":");
+    var gHtml=formatKifCommentHtml(exp.comment,turnMark+formatMove(exp)+":");
     st++;
     clearMistakeCount();
     uScr();renderBoard();
-    var nextPly=st+1,branches=getBranchesAt(nextPly),pfx='<span style="font-size:12px;color:#555;">相手: '+turnMark+escapeHtml(exp.name)+'</span>';
+    var nextPly=st+1,branches=getBranchesAt(nextPly),pfx='<span style="font-size:12px;color:#555;">相手: '+turnMark+escapeHtml(formatMove(exp))+'</span>';
     
     if(gHtml) addCommentInfo(gHtml);
     
@@ -720,8 +834,18 @@ function autoPlayOpponent(){
        setStHtml(pfx+'<br><span style="color:#2e7d32;">▶ '+nextPly+'手目を指してください</span>');
        isA=false;
     }else{
-      if(st<rawMoves.length)setStHtml(pfx+'<br><span style="color:#2e7d32;">▶ '+nextPly+'手目を指してください</span>');
-      else{var fr=Math.min(100,Math.round((cCnt/getMyTotalPlies())*100));setStHtml(pfx+'<br><span style="color:#1b5e20;"> ◯ 完了！ 初回正答率: '+fr+'%</span>');}
+      if(st<rawMoves.length) {
+        setStHtml(pfx+'<br><span style="color:#2e7d32;">▶ '+nextPly+'手目を指してください</span>');
+      } else {
+        var targetBranch = currentPracticeBranch || (parsedTree[currentBlockIndex] ? parsedTree[currentBlockIndex].branchId : null);
+        if(!sessionCompleted[targetBranch]) {
+            sessionCompleted[targetBranch] = true;
+            recordCompletionV3(targetBranch);
+        }
+        var stats = getBranchStatV3(currentKifId, targetBranch);
+        var r = stats.count > 0 ? Math.round((stats.ok/stats.count)*100) : 0;
+        setStHtml(pfx+'<br><span style="color:#1b5e20;"> ◯ 完了！ 勉強回数: '+stats.tryCount+'回 / 正答率: '+r+'%</span>');
+      }
       isA=false;
     }
   });
@@ -766,8 +890,11 @@ function onC(x,y){
   if(isMatch){
     svH();isA=true;closeBSheet();
     
-    if(mistakeCount === 0) cCnt++;
-    recordStat(true);
+    var inputKey = targetBranch + "_" + st;
+    if(sessionFirstInput[inputKey] === undefined) {
+        sessionFirstInput[inputKey] = true;
+        recordStatV3(targetBranch, true);
+    }
     
     pt=pro(pt,exp.name,isD);if(!isD)delete bS[from];renderBoard();
     var aSt = st;
@@ -775,19 +902,19 @@ function onC(x,y){
       if(st !== aSt) return;
       if(bS[to]){var cap=unp[bS[to].t]||bS[to].t;if(isG)gHnd[cap]=(gHnd[cap]||0)+1;else sHnd[cap]=(sHnd[cap]||0)+1;}
       if(isD){if(isG)gHnd[pt]--;else sHnd[pt]--;}
-      bS[to]={t:pt,g:isG?1:0};st++;hFail=false;
+      bS[to]={t:pt,g:isG?1:0};st++;
       
       clearMistakeCount();
       uScr();renderBoard();
       
       clearCommentInfo();
-      var sHtml=formatKifCommentHtml(exp.comment, turnMark+exp.name+":");
+      var sHtml=formatKifCommentHtml(exp.comment, turnMark+formatMove(exp)+":");
       var pHtml=showPostMoveBranches(branches,chosen,turnMark);
       if(sHtml) addCommentInfo(sHtml);
       if(pHtml) addCommentInfo(pHtml);
 
       var np2=st+1,br2=getBranchesAt(np2);
-      var baseMsg='<span style="color:#1b5e20;">◯ 正解（'+turnMark+escapeHtml(exp.name)+'）</span>';
+      var baseMsg='<span style="color:#1b5e20;">◯ 正解（'+turnMark+escapeHtml(formatMove(exp))+'）</span>';
       
       if(br2.length>=2){
         setStHtml(baseMsg+'<br><span style="font-size:12px;color:#1976d2;">▶ 相手の応手を選択してください</span>');
@@ -797,23 +924,27 @@ function onC(x,y){
         setStHtml(baseMsg);scheduleOpponent((sHtml||pHtml)?900:220);
       }
       else{
-        var fr=Math.min(100,Math.round((cCnt/getMyTotalPlies())*100));
-        setStHtml(baseMsg+'<br><span style="color:#1b5e20;">◯ 完了！ 初回正答率: '+fr+'%</span>');isA=false;
+        if(!sessionCompleted[targetBranch]) {
+            sessionCompleted[targetBranch] = true;
+            recordCompletionV3(targetBranch);
+        }
+        var stats = getBranchStatV3(currentKifId, targetBranch);
+        var r = stats.count > 0 ? Math.round((stats.ok/stats.count)*100) : 0;
+        setStHtml(baseMsg+'<br><span style="color:#1b5e20;">◯ 完了！ 勉強回数: '+stats.tryCount+'回 / 正答率: '+r+'%</span>');
+        isA=false;
       }
     });
   }else{
-    recordStat(false);
-    mistakeCount++;
-    hFail=true;isA=true;var op=isD?null:bS[from];if(!isD)delete bS[from];renderBoard();
-    var aSt2 = st;
-    
-    var expMoveStr = exp.name;
-    if(exp.rawLine) {
-        var match = exp.rawLine.split('*')[0].trim();
-        if(match) {
-            expMoveStr = match.replace(/^\s*\d+\s+/, '');
-        }
+    var inputKey = targetBranch + "_" + st;
+    if(sessionFirstInput[inputKey] === undefined) {
+        sessionFirstInput[inputKey] = false;
+        recordStatV3(targetBranch, false);
     }
+
+    mistakeCount++;
+    isA=true;var op=isD?null:bS[from];if(!isD)delete bS[from];renderBoard();
+    var aSt2 = st;
+    var expMoveStr = formatMove(exp);
     
     anim(from,to,pt,isG?1:0,function(){
       if(st !== aSt2) return;
@@ -937,10 +1068,10 @@ function fRec(){
 }
 function rG(){
   cancelOppTimer();closeBSheet();
-  var prevA = isA;
-  st=0;sF=null;hI=null;isA=false;hst=[];cCnt=0;hFail=false;currentPracticeBranch=null;
+  st=0;sF=null;hI=null;isA=false;hst=[];currentPracticeBranch=null;
   clearCommentInfo();
   clearMistakeCount();
+  clearSessionRecords();
 
   if(parsedTree.length)buildSequenceFromBlock(0);initB();uScr();renderBoard();
   if(rawMoves.length){
@@ -1177,25 +1308,13 @@ async function pushSingleKifAsync(kId){
   }
 }
 
-async function pushSinglePracticeEventAsync(ev){
+async function pushSinglePracticeEventV3Async(ev){
   if(!fbDb||!currentUser||!navigator.onLine||!ev)return;
   var fb=window._fb;
   try{
-    var ref=fb.doc(fbDb,"users",currentUser.uid,"practice_events",ev.event_id);
-    await fb.setDoc(ref,{
-      event_id:ev.event_id,
-      user_id:currentUser.uid,
-      kif_id:ev.kif_id,
-      branch_id:ev.branch_id,
-      total_delta:ev.total_delta,
-      ok_delta:ev.ok_delta,
-      h0_delta:ev.h0_delta,
-      h1_delta:ev.h1_delta,
-      h2_delta:ev.h2_delta,
-      view_delta:ev.view_delta,
-      created_at:ev.created_at
-    });
-    if(practiceEvents[ev.event_id])practiceEvents[ev.event_id].synced=true;
+    var ref=fb.doc(fbDb,"users",currentUser.uid,"practice_events_v3",ev.event_id);
+    await fb.setDoc(ref, ev);
+    if(practiceEventsV3[ev.event_id])practiceEventsV3[ev.event_id].synced=true;
     saveLocalStores();
     setSyncStatus("ok","☁️ 同期済み");
   }catch(e){}
@@ -1213,15 +1332,15 @@ async function commitBatchChunks(items,buildFn){
   return true;
 }
 
-function refreshUIAfterCloudMerge(kChg,curUpd,curDel,sChg,showUserToast){
-  rebuildBranchStatsFromEvents();
+function refreshUIAfterCloudMerge(kChg,curUpd,curDel,showUserToast){
+  rebuildBranchStatsV3FromEvents();
   saveLocalStores();
   var midGame=(isR||st>0||isA);
   if(kChg){
     var act=getActiveKifList();
     if(curDel){
       var nid=act.length?act[0].kif_id:"";uD(nid);
-      if(!midGame){if(nid)lB(kifStore[nid].kif_text,nid);else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";clearCommentInfo();rG();}}
+      if(!midGame){if(nid)lB(kifStore[nid].kif_text,nid);else{parsedTree=[];rawMoves=[];clearCommentInfo();clearMistakeCount();clearSessionRecords();rG();}}
     }else if(!currentKifId&&act.length){
       var fid=act[0].kif_id;uD(fid);if(!isR)lB(kifStore[fid].kif_text,fid);
     }else{
@@ -1230,13 +1349,9 @@ function refreshUIAfterCloudMerge(kChg,curUpd,curDel,sChg,showUserToast){
       if(curUpd&&!midGame&&kifStore[currentKifId])lB(kifStore[currentKifId].kif_text,currentKifId);
     }
   }
-  if(sChg&&!isR){
-    var brNow=getBranchesAt(st+1);
-    var isMyTurn = (!isGoteMode && st%2===0) || (isGoteMode && st%2===1);
-    if(st===0&&brNow.length>=2&&isMyTurn)showBranchInfo(brNow,1);
-  }
+  if(!isR) uScr();
   setSyncStatus("ok","☁️ 同期済み");
-  if(showUserToast||kChg||sChg)showToast("☁️ クラウド同期完了");
+  if(showUserToast||kChg)showToast("☁️ クラウド同期完了");
 }
 
 async function syncWithCloud(showUserToast){
@@ -1248,9 +1363,9 @@ async function syncWithCloud(showUserToast){
 
   try{
     var kSnap=await fb.getDocs(fb.collection(fbDb,"users",uid,"kifs"));
-    var eSnap=await fb.getDocs(fb.collection(fbDb,"users",uid,"practice_events"));
+    var eSnap=await fb.getDocs(fb.collection(fbDb,"users",uid,"practice_events_v3"));
 
-    var kChg=false,curUpd=false,curDel=false,sChg=false;
+    var kChg=false,curUpd=false,curDel=false;
     var ckMap={},ceMap={},allKifIds={};
 
     kSnap.forEach(function(docSnap){
@@ -1289,56 +1404,33 @@ async function syncWithCloud(showUserToast){
     eSnap.forEach(function(docSnap){
       var ce=docSnap.data();if(!ce||!ce.event_id||!ce.kif_id||!ce.branch_id)return;
       ceMap[ce.event_id]=true;
-      if(!practiceEvents[ce.event_id]){
-        practiceEvents[ce.event_id]={
-          event_id:ce.event_id,
-          kif_id:ce.kif_id,
-          branch_id:ce.branch_id,
-          total_delta:Number(ce.total_delta)||1,
-          ok_delta:Number(ce.ok_delta)||0,
-          h0_delta:Number(ce.h0_delta)||0,
-          h1_delta:Number(ce.h1_delta)||0,
-          h2_delta:Number(ce.h2_delta)||0,
-          view_delta:Number(ce.view_delta)||0,
-          created_at:Number(ce.created_at)||0,
-          synced:true
-        };
-        sChg=true;
+      if(!practiceEventsV3[ce.event_id]){
+        practiceEventsV3[ce.event_id] = ce;
+        practiceEventsV3[ce.event_id].synced=true;
       }else{
-        practiceEvents[ce.event_id].synced=true;
+        practiceEventsV3[ce.event_id].synced=true;
       }
     });
 
     var eUp=[];
-    for(var pid in practiceEvents){
-      var pev=practiceEvents[pid];if(!pev||!pev.kif_id||!pev.branch_id)continue;
+    for(var pid in practiceEventsV3){
+      var pev=practiceEventsV3[pid];if(!pev||!pev.kif_id||!pev.branch_id)continue;
       if(!pev.synced||!ceMap[pid]){
-        eUp.push({
-          event_id:pev.event_id,
-          user_id:uid,
-          kif_id:pev.kif_id,
-          branch_id:pev.branch_id,
-          total_delta:pev.total_delta,
-          ok_delta:pev.ok_delta,
-          h0_delta:pev.h0_delta,
-          h1_delta:pev.h1_delta,
-          h2_delta:pev.h2_delta,
-          view_delta:pev.view_delta,
-          created_at:pev.created_at
-        });
+        pev.user_id = uid;
+        eUp.push(pev);
       }
     }
     if(eUp.length){
       await commitBatchChunks(eUp,function(batch,item){
-        batch.set(fb.doc(fbDb,"users",uid,"practice_events",item.event_id),item);
+        batch.set(fb.doc(fbDb,"users",uid,"practice_events_v3",item.event_id),item);
       });
       for(var z=0;z<eUp.length;z++){
         var eid2=eUp[z].event_id;
-        if(practiceEvents[eid2])practiceEvents[eid2].synced=true;
+        if(practiceEventsV3[eid2])practiceEventsV3[eid2].synced=true;
       }
     }
 
-    refreshUIAfterCloudMerge(kChg,curUpd,curDel,sChg,showUserToast);
+    refreshUIAfterCloudMerge(kChg,curUpd,curDel,showUserToast);
   }catch(err){
     setSyncStatus("err","⚠️ 同期エラー");
   }finally{
@@ -1368,32 +1460,21 @@ function setupRealtimeSubscription(){
           else if(wDel||pTx!==ck.kif_text||pTi!==ck.title){kChg=true;if(ck.kif_id===currentKifId&&pTx!==ck.kif_text)curUpd=true;}
         }
       });
-      if(kChg)refreshUIAfterCloudMerge(true,curUpd,curDel,false,false);
+      if(kChg)refreshUIAfterCloudMerge(true,curUpd,curDel,false);
     },function(err){});
 
-    var unsubEvents=fb.onSnapshot(fb.collection(fbDb,"users",uid,"practice_events"),function(snap){
+    var unsubEvents=fb.onSnapshot(fb.collection(fbDb,"users",uid,"practice_events_v3"),function(snap){
       if(snap.metadata.hasPendingWrites)return;
       var sChg=false;
       snap.docChanges().forEach(function(chg){
         var ce=chg.doc.data();if(!ce||!ce.event_id||!ce.kif_id||!ce.branch_id)return;
-        if(!practiceEvents[ce.event_id]){
-          practiceEvents[ce.event_id]={
-            event_id:ce.event_id,
-            kif_id:ce.kif_id,
-            branch_id:ce.branch_id,
-            total_delta:Number(ce.total_delta)||1,
-            ok_delta:Number(ce.ok_delta)||0,
-            h0_delta:Number(ce.h0_delta)||0,
-            h1_delta:Number(ce.h1_delta)||0,
-            h2_delta:Number(ce.h2_delta)||0,
-            view_delta:Number(ce.view_delta)||0,
-            created_at:Number(ce.created_at)||0,
-            synced:true
-          };
+        if(!practiceEventsV3[ce.event_id]){
+          practiceEventsV3[ce.event_id] = ce;
+          practiceEventsV3[ce.event_id].synced=true;
           sChg=true;
         }
       });
-      if(sChg)refreshUIAfterCloudMerge(false,false,false,true,false);
+      if(sChg)refreshUIAfterCloudMerge(false,false,false,false);
     },function(err){});
 
     realtimeUnsubs.push(unsubKifs,unsubEvents);
