@@ -253,7 +253,6 @@ function rebuildBranchStatsV3FromEvents(){
           latestReset = practiceEventsV3[eid].created_at;
       }
   }
-  // localStorage上の最新リセット時刻と比較
   if(latestReset > statsResetTime) {
       statsResetTime = latestReset;
       try{localStorage.setItem("skifs_stats_reset_time", statsResetTime.toString());}catch(e){}
@@ -505,6 +504,7 @@ function parseFullKif(tx){
 function buildParsedTreeHierarchy() {
   for (var i = 0; i < parsedTree.length; i++) {
     parsedTree[i].children = [];
+    parsedTree[i].index = i;
   }
   for (var i = 0; i < parsedTree.length; i++) {
     if (i === 0) continue;
@@ -514,6 +514,19 @@ function buildParsedTreeHierarchy() {
     } else {
       parsedTree[0].children.push(parsedTree[i]);
     }
+  }
+  
+  function sortChildren(node) {
+      node.children.sort(function(a, b) {
+          if(a.startPly !== b.startPly) return a.startPly - b.startPly;
+          return a.index - b.index;
+      });
+      for(var k=0; k<node.children.length; k++) {
+          sortChildren(node.children[k]);
+      }
+  }
+  if(parsedTree.length > 0) {
+      sortChildren(parsedTree[0]);
   }
 }
 
@@ -535,7 +548,7 @@ function getBranchesAt(ply){
     for(var s=0;s<ply-1;s++){var rm=rawMoves[s],bm=bSeq[s];if(!rm||!bm||bm.from!==rm.from||bm.to!==rm.to||bm.name!==rm.name){ok=false;break;}}
     if(ok&&bSeq[ply-1]&&bSeq[ply-1].ply===ply){
       var cmv=bSeq[ply-1],mk=cmv.from+"->"+cmv.to+":"+cmv.name;
-      if(!seen[mk]){seen[mk]=true;uniq.push({index:i,branchId:parsedTree[i].branchId,name:parsedTree[i].name,moveName:cmv.name,moveKey:mk,coordKey:cmv.from+"->"+cmv.to, expObj: cmv});}
+      if(!seen[mk]){seen[mk]=true;uniq.push({index:parsedTree[i].index,branchId:parsedTree[i].branchId,name:parsedTree[i].name,moveName:cmv.name,moveKey:mk,coordKey:cmv.from+"->"+cmv.to, expObj: cmv});}
     }
   }
   return uniq.length>1?uniq:[];
@@ -552,8 +565,17 @@ function addBsBtn(list,icon,boldTxt,subTxt,statTxt,onClick){
 }
 
 function buildTreeHtml(node, prefix, isLast) {
-    var html = '<div style="display:flex; align-items:flex-start; margin-bottom:8px; font-family:monospace; font-size:14px; white-space:pre;">';
+    var hasChildren = node.children && node.children.length > 0;
+    var html = '<div class="tree-node-container">';
+    html += '<div style="display:flex; align-items:flex-start; margin-bottom:8px; font-family:monospace; font-size:14px; white-space:pre;">';
+    
     html += '<div style="color:#999; padding-top:6px;">' + escapeHtml(prefix + (node.index===0 ? "" : (isLast ? "└─ " : "├─ "))) + '</div>';
+
+    if (hasChildren) {
+        html += '<div onclick="toggleNode(event, ' + node.index + ')" style="cursor:pointer; color:#1976d2; margin-right:4px; padding-top:6px; font-size:14px; user-select:none; width:20px; text-align:center;" id="toggle-icon-' + node.index + '">▼</div>';
+    } else {
+        html += '<div style="width:24px;"></div>';
+    }
 
     var stats = getBranchStatV3(currentKifId, node.branchId);
     var rateStr = stats.count > 0 ? Math.round((stats.ok / stats.count) * 100) + "%" : "未練習";
@@ -571,12 +593,33 @@ function buildTreeHtml(node, prefix, isLast) {
     html += '<div style="font-size:12px; margin-top:4px; font-family:sans-serif; color:inherit; opacity:0.9;">勉強: ' + stats.tryCount + '回 / 正答率: ' + rateStr + '</div>';
     html += '</div></div>';
 
-    var nextPrefix = prefix + (node.index===0 ? "" : (isLast ? "   " : "│  "));
-    for (var i = 0; i < node.children.length; i++) {
-        html += buildTreeHtml(node.children[i], nextPrefix, i === node.children.length - 1);
+    if (hasChildren) {
+        html += '<div id="tree-children-' + node.index + '" style="display:block;">';
+        var nextPrefix = prefix + (node.index===0 ? "" : (isLast ? "   " : "│  "));
+        for (var i = 0; i < node.children.length; i++) {
+            html += buildTreeHtml(node.children[i], nextPrefix, i === node.children.length - 1);
+        }
+        html += '</div>';
     }
+    
+    html += '</div>';
     return html;
 }
+
+window.toggleNode = function(event, idx) {
+    event.stopPropagation();
+    var childrenDiv = document.getElementById('tree-children-' + idx);
+    var iconDiv = document.getElementById('toggle-icon-' + idx);
+    if (childrenDiv && iconDiv) {
+        if (childrenDiv.style.display === 'none') {
+            childrenDiv.style.display = 'block';
+            iconDiv.textContent = '▼';
+        } else {
+            childrenDiv.style.display = 'none';
+            iconDiv.textContent = '▶';
+        }
+    }
+};
 
 window.selectBranchNode = function(idx) {
     cancelOppTimer();
@@ -658,7 +701,7 @@ function uScr(){
   el.innerHTML='<span>['+escapeHtml(curB)+'] '+st+'/'+rawMoves.length+'手</span><span>勉強回数: '+stats.tryCount+'回 / 正答率: '+rateStr+'</span>';
 }
 
-function svH(){hst.push({st:st,blk:currentBlockIndex,cpb:currentPracticeBranch,mc:mistakeCount});}
+function svH(){hst.push({st:st,blk:currentBlockIndex,cpb:currentPracticeBranch});}
 
 function uM(){
   cancelOppTimer();if(isA)return;closeBSheet();
@@ -675,14 +718,13 @@ function uM(){
   
   var tb=currentBlockIndex;while(tb>0&&parsedTree[tb]&&tp<parsedTree[tb].startPly-1)tb=parsedTree[tb].parentIdx;
   if(tb!==currentBlockIndex)buildSequenceFromBlock(tb);
-  var rCPB=null, rMC=0;
+  var rCPB=null;
   while(hst.length>0&&hst[hst.length-1].st>=tp){
     var p=hst.pop();
-    if(p.st===tp){rCPB=p.cpb; rMC=p.mc;}
+    if(p.st===tp){rCPB=p.cpb;}
   }
   if(rCPB!==null){
     currentPracticeBranch=rCPB;
-    mistakeCount=rMC||0;
   }
   else{
     currentPracticeBranch=tb>0?parsedTree[tb].branchId:null;
