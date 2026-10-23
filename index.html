@@ -105,6 +105,7 @@ td.w-cell{background:#ffcdd2!important;}
     <div id="bbox"><table id="tbl"><tbody id="tb"></tbody></table></div>
     <div class="hand" id="sh"></div>
     <div id="pbtns" style="margin-top:6px;display:flex;justify-content:center;gap:4px;flex-wrap:wrap;">
+      <button class="btn-b" style="background:#00897b;" id="btn-autoplay" onclick="toggleAutoPlay()">▶ 分岐まで再生</button>
       <button class="btn-b" style="background:#e65100;" onclick="uM()">↩️ 待った</button>
       <button class="btn-b" style="background:#e91e63;" onclick="showBranchModalManual()">🔀 分岐</button>
       <button class="btn-b" style="background:#455a64;" onclick="showAllBranchesModal()">🌲 全分岐</button>
@@ -173,6 +174,12 @@ var unp={"と":"歩","成香":"香","成桂":"桂","成銀":"銀","馬":"角","�
 
 var mistakeCount = 0;
 
+var isGoteMode = false;
+var AUTO_PLAY_INTERVAL = 700; // 自動再生の1手あたりの間隔(ミリ秒)
+var autoPlayTimer = null;
+var autoPlayVersion = 0;
+var isAutoPlaying = false;
+
 function clearMistakeCount() {
   mistakeCount = 0;
 }
@@ -202,8 +209,8 @@ function formatMove(m) {
   }
 }
 
-var isGoteMode = false;
 function togglePMode(){
+  cancelAutoPlay();
   isGoteMode = !isGoteMode;
   var btn = document.getElementById("btn-pmode");
   if(isGoteMode){
@@ -327,8 +334,159 @@ function loadAndMigrateLocalData(){
 
 function showToast(msg){var t=document.getElementById("sync-toast");if(!t)return;t.textContent=msg;t.style.display="block";clearTimeout(t._tid);t._tid=setTimeout(function(){t.style.display="none";},2600);}
 function setSyncStatus(st,tx){var b=document.getElementById("sync-badge");if(!b)return;b.className=st==="ok"?"sync-ok":(st==="ing"?"sync-ing":(st==="err"?"sync-err":""));b.textContent=tx;}
+
 function cancelOppTimer(){oppTimerVersion++;if(oppTimer!==null){clearTimeout(oppTimer);oppTimer=null;}}
 function scheduleOpponent(d){cancelOppTimer();var v=oppTimerVersion,ek=currentKifId,eb=currentBlockIndex,es=st;oppTimer=setTimeout(function(){oppTimer=null;if(v!==oppTimerVersion||isR||currentKifId!==ek||currentBlockIndex!==eb||st!==es)return;autoPlayOpponent();},d);}
+
+// 自動再生の制御関数群
+function cancelAutoPlay() {
+  autoPlayVersion++;
+  if (autoPlayTimer !== null) {
+    clearTimeout(autoPlayTimer);
+    autoPlayTimer = null;
+  }
+  if (isAutoPlaying) {
+    isAutoPlaying = false;
+    var btn = document.getElementById("btn-autoplay");
+    if (btn) {
+      btn.textContent = "▶ 分岐まで再生";
+      btn.style.background = "#00897b";
+    }
+  }
+}
+
+function toggleAutoPlay() {
+  if (isAutoPlaying) {
+    var wasWaiting = (autoPlayTimer !== null);
+    cancelAutoPlay();
+    if (wasWaiting) {
+      showCurrentBranchState(true);
+    }
+  } else {
+    if (!parsedTree.length || !rawMoves.length) return;
+    if (st >= rawMoves.length) {
+      alert("すでに最終手です");
+      return;
+    }
+    isAutoPlaying = true;
+    cancelOppTimer();
+    autoPlayVersion++;
+    var btn = document.getElementById("btn-autoplay");
+    if (btn) {
+      btn.textContent = "⏸ 停止";
+      btn.style.background = "#d32f2f";
+    }
+    processAutoPlayMove(autoPlayVersion);
+  }
+}
+
+function showCurrentBranchState(manualStop) {
+  var nextPly = st + 1;
+  var branches = getBranchesAt(nextPly);
+  var isMyTurn = (!isGoteMode && st%2===0) || (isGoteMode && st%2===1);
+  var prefix = manualStop ? '<span style="color:#e65100;">自動再生を停止しました</span><br>' : '';
+  
+  if (branches.length >= 2) {
+      if (isMyTurn) {
+          if(!currentPracticeBranch)currentPracticeBranch=parsedTree[currentBlockIndex]?parsedTree[currentBlockIndex].branchId:branches[0].branchId;
+          showBranchInfo(branches, nextPly);
+          setStHtml(prefix + '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>');
+      } else {
+          setStHtml(prefix + '<span style="color:#1976d2;">▶ ' + nextPly + '手目 相手の応手を選択してください</span>');
+          showBranchSheet(branches, nextPly);
+      }
+  } else {
+      if (st >= rawMoves.length) {
+          setStHtml(prefix + '<span style="color:#1b5e20;">最終手まで再生しました（次の分岐はありません）</span>');
+      } else {
+          if (isMyTurn) {
+              setStHtml(prefix + '<span style="color:#2e7d32;">▶ ' + nextPly + '手目を指してください</span>');
+          } else {
+              if (manualStop) {
+                  setStHtml(prefix + '<span style="color:#1976d2;">▶ 相手の応手を待っています（再生ボタンで再開）</span>');
+                  isA = false;
+                  cancelOppTimer();
+              } else {
+                  setStHtml(prefix + '<span style="color:#1976d2;">▶ 相手の応手を待っています...</span>');
+                  isA = true;
+                  scheduleOpponent(400);
+              }
+          }
+      }
+  }
+}
+
+function processAutoPlayMove(version) {
+  if (version !== autoPlayVersion || !isAutoPlaying || isR) return;
+
+  var nextPly = st + 1;
+  var branches = getBranchesAt(nextPly);
+
+  if (branches.length >= 2) {
+      cancelAutoPlay();
+      showCurrentBranchState(false);
+      return;
+  }
+
+  if (st >= rawMoves.length) {
+      cancelAutoPlay();
+      setStHtml('<span style="color:#1b5e20;">最終手まで再生しました（次の分岐はありません）</span>');
+      return;
+  }
+
+  var exp = rawMoves[st];
+  var isD = (exp.from.indexOf("h_") === 0);
+  var isG = (st % 2 === 1);
+  
+  svH();
+
+  var pt = pro(isD ? exp.from.replace("h_", "") : (bS[exp.from] ? bS[exp.from].t : "歩"), exp.name, isD);
+  if (!isD && bS[exp.from]) delete bS[exp.from];
+  renderBoard();
+
+  var aSt = st;
+  var aKif = currentKifId;
+  var aBlk = currentBlockIndex;
+
+  anim(exp.from, exp.to, pt, isG ? 1 : 0, function() {
+      if (currentKifId !== aKif || currentBlockIndex !== aBlk || st !== aSt) return;
+
+      if (bS[exp.to]) {
+          var rC = unp[bS[exp.to].t] || bS[exp.to].t;
+          if (isG) gHnd[rC] = (gHnd[rC] || 0) + 1; else sHnd[rC] = (sHnd[rC] || 0) + 1;
+      }
+      if (isD) {
+          if (isG) gHnd[pt]--; else sHnd[pt]--;
+      }
+      bS[exp.to] = { t: pt, g: isG ? 1 : 0 };
+      
+      var turnMark = isG ? "△" : "▲";
+      var gHtml = formatKifCommentHtml(exp.comment, turnMark + formatMove(exp) + ":");
+      
+      st++;
+      clearMistakeCount();
+      uScr();
+      renderBoard();
+      
+      clearCommentInfo();
+      if (gHtml) addCommentInfo(gHtml);
+      
+      var moveText = escapeHtml(formatMove(exp));
+      setStHtml('<span style="color:#00897b;">▶ 自動再生中... ' + turnMark + moveText + '</span>');
+
+      if (version === autoPlayVersion && isAutoPlaying) {
+          var delay = Math.max(0, AUTO_PLAY_INTERVAL - 190);
+          autoPlayTimer = setTimeout(function() {
+              processAutoPlayMove(version);
+          }, delay);
+      } else {
+          if (currentKifId === aKif && currentBlockIndex === aBlk && st === aSt + 1) {
+              showCurrentBranchState(true);
+          }
+      }
+  });
+}
+
 function pro(pt,nm,isD){return(!isD&&nm.indexOf("成")!==-1&&nm.indexOf("不成")===-1&&pt.indexOf("成")===-1)?(pmap[pt]||pt):pt;}
 function escapeHtml(s){return s?String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"):"";}
 
@@ -393,7 +551,7 @@ function recordCompletionV3(bId) {
   rebuildBranchStatsV3FromEvents();
 }
 
-function oM(id){document.getElementById(id).style.display="flex";}
+function oM(id){cancelAutoPlay(); document.getElementById(id).style.display="flex";}
 function cM(id){document.getElementById(id).style.display="none";}
 function closeBSheet(){document.getElementById("bsheet").style.display="none";}
 function setStHtml(h){var el=document.getElementById("st-inner")||document.getElementById("st");el.innerHTML=h;var c=document.getElementById("st");if(c)c.scrollTop=0;}
@@ -416,6 +574,7 @@ function regK(t,tx,fId){
   saveLocalStores();uD(kId);lB(tx,kId);pushSingleKifAsync(kId);return true;
 }
 function renKif(){
+  cancelAutoPlay();
   if(!currentKifId||!kifStore[currentKifId])return;
   var cur=kifStore[currentKifId],nt=prompt("新しいタイトル:",cur.title);
   if(!nt||!nt.trim()||nt.trim()===cur.title)return;
@@ -434,12 +593,14 @@ function uD(selId){
   }
 }
 function swKif(){
+  cancelAutoPlay();
   cancelOppTimer();if(isR)eRec();
   var kId=document.getElementById("sel").value;
   if(kId&&kifStore[kId]&&!kifStore[kId].deleted_at)lB(kifStore[kId].kif_text,kId);
   else{parsedTree=[];rawMoves=[];currentKifId="";currentKifName="";clearCommentInfo();clearMistakeCount();clearSessionRecords();rG();}
 }
 function delKif(){
+  cancelAutoPlay();
   var delId=document.getElementById("sel").value;
   if(!delId||!kifStore[delId]||!confirm("「"+kifStore[delId].title+"」を削除しますか？"))return;
   cancelOppTimer();var now=Date.now();
@@ -533,6 +694,7 @@ function buildParsedTreeHierarchy() {
 function getFullSequenceForBlock(idx){return parsedTree[idx]?parsedTree[idx].fullSeq||[]:[];}
 function buildSequenceFromBlock(idx){if(!parsedTree.length)return;currentBlockIndex=(idx<0||idx>=parsedTree.length)?0:idx;rawMoves=getFullSequenceForBlock(currentBlockIndex);}
 function lB(tx,kId){
+  cancelAutoPlay();
   cancelOppTimer();if(kId&&kifStore[kId]){currentKifId=kId;currentKifName=kifStore[kId].title;}
   try{ parsedTree=parseFullKif(tx); }catch(e){ parsedTree=[]; }
   if(!parsedTree.length){parsedTree=[];rawMoves=[];clearCommentInfo();clearMistakeCount();clearSessionRecords();rG();return;}
@@ -622,6 +784,7 @@ window.toggleNode = function(event, idx) {
 };
 
 window.selectBranchNode = function(idx) {
+    cancelAutoPlay();
     cancelOppTimer();
     closeBSheet();
     buildSequenceFromBlock(idx);
@@ -638,7 +801,7 @@ function showBranchSheet(branches,currentPly){
     var rateStr = stats.count > 0 ? Math.round((stats.ok / stats.count) * 100) + "%" : "未練習";
     var statTxt = "勉強: " + stats.tryCount + "回 / 正答率: " + rateStr;
     addBsBtn(list,b.index===0?"⭐ ":"🔀 ", formatMove(b.expObj) || b.moveName, " ("+b.name+")", statTxt, function(){
-      cancelOppTimer();closeBSheet();svH();buildSequenceFromBlock(b.index);currentPracticeBranch=b.branchId;jumpToExactPly(currentPly-1,true,true);
+      cancelAutoPlay();cancelOppTimer();closeBSheet();svH();buildSequenceFromBlock(b.index);currentPracticeBranch=b.branchId;jumpToExactPly(currentPly-1,true,true);
     });
   })(branches[i]);
   document.getElementById("bsheet").style.display="block";
@@ -655,6 +818,7 @@ function showBranchInfo(branches,currentPly){
 }
 
 function showBranchModalManual(){
+  cancelAutoPlay();
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var cp=st+1,bAt=getBranchesAt(cp);
   var isMyTurn = (!isGoteMode && st%2===0) || (isGoteMode && st%2===1);
@@ -669,6 +833,7 @@ function showBranchModalManual(){
   }
 }
 function showAllBranchesModal(){
+  cancelAutoPlay();
   if(!parsedTree.length){alert("棋譜がありません");return;}
   var list=document.getElementById("bs-list");
   list.innerHTML = '<div style="padding:10px 4px; overflow-x:auto;">' + buildTreeHtml(parsedTree[0], "", true) + '</div>';
@@ -704,6 +869,7 @@ function uScr(){
 function svH(){hst.push({st:st,blk:currentBlockIndex,cpb:currentPracticeBranch});}
 
 function uM(){
+  cancelAutoPlay();
   cancelOppTimer();if(isA)return;closeBSheet();
   if(isR){
     if(rPly<=0)return;
@@ -733,6 +899,7 @@ function uM(){
 }
 
 function jumpToExactPly(playCount,skipBranch,preserveState){
+  cancelAutoPlay();
   cancelOppTimer();closeBSheet();
   var sHst=preserveState?hst.slice():[];
   initB();for(var i=0;i<rawMoves.length;i++){if(rawMoves[i].ply>playCount)break;applyMoveToBoard(rawMoves[i]);}
@@ -770,6 +937,7 @@ function jumpToExactPly(playCount,skipBranch,preserveState){
 }
 
 function jumpToPly(){
+  cancelAutoPlay();
   if(!rawMoves.length){alert("棋譜が読み込まれていません");return;}
   var max=rawMoves.length,inp=prompt("何手目まで進めて練習しますか？ (0〜"+max+"手目):",st.toString());if(inp===null)return;
   var t=parseInt(inp,10);if(isNaN(t)||t<0||t>max){alert("0から"+max+"の数値を入力してください");return;}
@@ -815,7 +983,10 @@ function renderBoard(wK){
     if(viewGote) d.classList.add("gote");
     var ps=document.createElement("span");ps.className="piece";ps.textContent=pn;d.appendChild(ps);
     if(sHnd[pn]>1){var cs=document.createElement("span");cs.className="hcnt";cs.textContent=sHnd[pn];d.appendChild(cs);}
-    d.onclick=function(){if(!isA&&(!isR ? !viewGote : rTurn===0)){closeBSheet();hI=null;sF=(sF===("h_"+pn))?null:("h_"+pn);renderBoard();}};
+    d.onclick=function(){
+      if (isAutoPlaying) { cancelAutoPlay(); showCurrentBranchState(true); return; }
+      if(!isA&&(!isR ? !viewGote : rTurn===0)){closeBSheet();hI=null;sF=(sF===("h_"+pn))?null:("h_"+pn);renderBoard();}
+    };
     (viewGote?gh:sh).appendChild(d);
   })(sp);
   for(var gp in gHnd)if(gHnd[gp]>0)(function(gpn){
@@ -824,7 +995,10 @@ function renderBoard(wK){
     if(sF===("h_g_"+gpn)) d.classList.add("sel");
     var ps=document.createElement("span");ps.className="piece";ps.textContent=gpn;d.appendChild(ps);
     if(gHnd[gpn]>1){var cs=document.createElement("span");cs.className="hcnt";cs.textContent=gHnd[gpn];d.appendChild(cs);}
-    d.onclick=function(){if(!isA&&(!isR ? viewGote : rTurn===1)){closeBSheet();hI=null;sF=(sF===("h_g_"+gpn))?null:("h_g_"+gpn);renderBoard();}};
+    d.onclick=function(){
+      if (isAutoPlaying) { cancelAutoPlay(); showCurrentBranchState(true); return; }
+      if(!isA&&(!isR ? viewGote : rTurn===1)){closeBSheet();hI=null;sF=(sF===("h_g_"+gpn))?null:("h_g_"+gpn);renderBoard();}
+    };
     (viewGote?sh:gh).appendChild(d);
   })(gp);
 }
@@ -894,6 +1068,11 @@ function autoPlayOpponent(){
 }
 
 function onC(x,y){
+  if (isAutoPlaying) {
+    cancelAutoPlay();
+    showCurrentBranchState(true);
+    return;
+  }
   if(isA)return;var k=x+","+y;if(isR){hRec(x,y,k);return;}
   hI=null;if(!rawMoves.length){setStHtml("棋譜を登録または選択してください");return;}
   
@@ -1016,6 +1195,7 @@ function onC(x,y){
 }
 
 function sRec(){
+  cancelAutoPlay();
   cancelOppTimer();isR=true;rTurn=0;rTree=[{name:"本譜",startPly:1,parentIdx:-1,fullSeq:[]}];rCurBlock=0;rPly=0;
   document.getElementById("rbar").style.display="block";document.getElementById("pbtns").style.display="none";document.getElementById("sb").style.visibility="hidden";
   closeBSheet();clearCommentInfo();clearMistakeCount();initB();uRSt();renderBoard();
@@ -1105,10 +1285,11 @@ function exportRecTreeToKif(){
 }
 function fRec(){
   if(!rTree.length||!rTree[0].fullSeq.length){alert("手がありません");return;}
-  var t=prompt("定跡名を入力:","新定跡_"+(new Date().getMonth()+1)+"月"+new Date().getDate()+"日");if(!t)return;
+  var t=prompt("定跡名を入力:","新定跡_"+(new Date().getMonth()+1)+"月"+new Date().getDate());if(!t)return;
   var kt=exportRecTreeToKif();isR=false;document.getElementById("rbar").style.display="none";document.getElementById("pbtns").style.display="flex";regK(t.trim(),kt);
 }
 function rG(){
+  cancelAutoPlay();
   cancelOppTimer();closeBSheet();
   st=0;sF=null;hI=null;isA=false;hst=[];currentPracticeBranch=null;
   clearCommentInfo();
@@ -1205,6 +1386,7 @@ async function saveCustomFbConfig(){
 }
 
 function oSync(){
+  cancelAutoPlay();
   var eff=getEffectiveFbConfig(),c=eff.config;
   if(c){
     document.getElementById("cfg-fb-apikey").value=c.apiKey||"";
