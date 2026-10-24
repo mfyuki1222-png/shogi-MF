@@ -39,15 +39,26 @@ h2{font-size:1rem;margin:2px;display:flex;align-items:center;justify-content:cen
 .hcnt{position:absolute;bottom:-2px;right:-2px;background:#222;color:#fff;font-size:10px;border-radius:50%;width:13px;height:13px;display:flex;align-items:center;justify-content:center;}
 #bbox{display:inline-block;background:#c89d5c;padding:3px;border-radius:4px;border:2px solid #8c6239;}
 #tbl{border-collapse:collapse;margin:0 auto;background:#e4be7b;}
-#tbl td{width:min(10.6vw,41px);height:min(11.8vw,45px);border:1px solid #4a3319;text-align:center;vertical-align:middle;padding:0;cursor:pointer;position:relative;}
+#tbl td{width:min(9.8vw,39px);height:min(11vw,43px);border:1px solid #4a3319;text-align:center;vertical-align:middle;padding:0;cursor:pointer;position:relative;}
 td.sel,.hp.sel .piece{background:#d4e157!important;}
 td.h-from{background:#81d4fa!important;}
 td.h-to{background:#b3e5fc!important;}
 td.w-cell{background:#ffcdd2!important;}
-.piece{display:inline-flex;align-items:center;justify-content:center;width:min(9vw,35px);height:min(10.2vw,39px);background:#fff8eb;color:#111;font-size:min(5.3vw,19px);font-weight:bold;border-radius:3px;clip-path:polygon(50% 0,95% 20%,82% 100%,18% 100%,5% 20%);box-shadow:0 1px 2px rgba(0,0,0,.3);}
+.piece{display:inline-flex;align-items:center;justify-content:center;width:min(8.3vw,33px);height:min(9.5vw,37px);font-size:min(4.9vw,18px);font-weight:bold;border-radius:3px;clip-path:polygon(50% 0,95% 20%,82% 100%,18% 100%,5% 20%);box-shadow:0 1px 2px rgba(0,0,0,.3);}
 .gote .piece{transform:rotate(180deg);color:#900;background:#fff5eb;}
 .fly{position:fixed;z-index:999;pointer-events:none;will-change:transform;transition:transform .18s cubic-bezier(.2,.8,.4,1);}
 .fly.gote{color:#900;background:#fff5eb;}
+
+/* 座標表示用のCSS */
+#tbl th { font-weight: bold; color: #3e2723; border: none; padding: 0; user-select: none; font-family: sans-serif; }
+.coord-x { height: min(4vw, 16px); font-size: min(3.5vw, 13px); vertical-align: bottom; }
+.coord-y { width: min(4vw, 16px); font-size: min(3.5vw, 13px); vertical-align: middle; line-height: 1.1; }
+.coord-corner { width: min(4vw, 16px); height: min(4vw, 16px); }
+#tbl td.top-edge { border-top: 2px solid #4a3319; }
+#tbl td.bottom-edge { border-bottom: 2px solid #4a3319; }
+#tbl td.left-edge { border-left: 2px solid #4a3319; }
+#tbl td.right-edge { border-right: 2px solid #4a3319; }
+
 .modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;}
 .mbox{background:#fff;width:92%;max-width:360px;padding:12px;border-radius:6px;text-align:left;max-height:90vh;overflow-y:auto;}
 .mbox input,.mbox textarea{width:100%;border:1px solid #ccc;border-radius:4px;margin-bottom:6px;padding:5px;font-size:13px;}
@@ -949,7 +960,21 @@ function jumpToPly(){
 function renderBoard(wK){
   var tb=document.getElementById("tb");tb.innerHTML="";
   var viewGote = isGoteMode;
-  
+
+  // 座標用のヘッダー行を追加
+  var trHead = document.createElement("tr");
+  for (var xi = 0; xi < 9; xi++) {
+      var x = viewGote ? xi + 1 : 9 - xi;
+      var tdH = document.createElement("th");
+      tdH.className = "coord-x";
+      tdH.textContent = zn[x];
+      trHead.appendChild(tdH);
+  }
+  var tdCorner = document.createElement("th");
+  tdCorner.className = "coord-corner";
+  trHead.appendChild(tdCorner);
+  tb.appendChild(trHead);
+
   for(var yi=0; yi<9; yi++){
     var y = viewGote ? 9 - yi : yi + 1;
     var tr=document.createElement("tr");
@@ -958,6 +983,13 @@ function renderBoard(wK){
       var td=document.createElement("td"),k=x+","+y;td.id="c_"+k;
       
       td.className = "";
+      
+      // 盤面の外枠を太くする
+      if (yi === 0) td.classList.add("top-edge");
+      if (yi === 8) td.classList.add("bottom-edge");
+      if (xi === 0) td.classList.add("left-edge");
+      if (xi === 8) td.classList.add("right-edge");
+
       if(sF===k) td.classList.add("sel");
       if(hI&&hI.from===k) td.classList.add("h-from");
       if(hI&&hI.to===k) td.classList.add("h-to");
@@ -970,6 +1002,13 @@ function renderBoard(wK){
       }
       (function(cx,cy){td.onclick=function(){onC(cx,cy);};})(x,y);tr.appendChild(td);
     }
+    
+    // 右側に段の座標を追加
+    var tdDan = document.createElement("th");
+    tdDan.className = "coord-y";
+    tdDan.textContent = kn[y];
+    tr.appendChild(tdDan);
+
     tb.appendChild(tr);
   }
 
