@@ -94,8 +94,9 @@ td.w-cell{background:#ffcdd2!important;}
   <div id="app-main">
     <h2><span>定跡チェッカー</span><span class="ver-badge">ver.2.1</span><span id="sync-badge" onclick="oSync()">☁️ 未設定</span></h2>
     <div class="pbar"><select id="sel" onchange="swKif()"></select><button class="btn" style="background:#546e7a;" onclick="renKif()">名変</button><button class="btn" style="background:#c62828;" onclick="delKif()">削除</button></div>
-    <div style="margin:3px 0;display:flex;justify-content:center;gap:4px;">
+    <div style="margin:3px 0;display:flex;justify-content:center;gap:4px;flex-wrap:wrap;">
       <button class="btn" style="background:#555;padding:5px 8px;" id="btn-pmode" onclick="togglePMode()">☗ 先手で練習</button>
+      <button class="btn" style="background:#546e7a;padding:5px 8px;" id="btn-rmode" onclick="toggleRMode()">相手分岐：手動</button>
       <button class="btn" style="background:#d81b60;" onclick="sRec()">🔴 作成</button>
       <button class="btn" onclick="oM('modal')">➕ KIF</button>
       <button class="btn" style="background:#00897b;" onclick="triggerCloudSyncBtn()">☁️ 同期</button>
@@ -186,6 +187,7 @@ var unp={"と":"歩","成香":"香","成桂":"桂","成銀":"銀","馬":"角","�
 var mistakeCount = 0;
 
 var isGoteMode = false;
+var isRandomOpponentBranch = false;
 var AUTO_PLAY_INTERVAL = 700; // 自動再生の1手あたりの間隔(ミリ秒)
 var autoPlayTimer = null;
 var autoPlayVersion = 0;
@@ -233,6 +235,29 @@ function togglePMode(){
   }
   rG();
 }
+
+function toggleRMode(){
+  cancelAutoPlay();
+  isRandomOpponentBranch = !isRandomOpponentBranch;
+  var btn = document.getElementById("btn-rmode");
+  if(isRandomOpponentBranch){
+    btn.textContent = "🎲 相手分岐：ランダム";
+    btn.style.background = "#0288d1";
+  }else{
+    btn.textContent = "相手分岐：手動";
+    btn.style.background = "#546e7a";
+  }
+  rG();
+}
+
+function handleRandomOpponentBranch(branches, delay) {
+    var randBr = branches[Math.floor(Math.random() * branches.length)];
+    currentPracticeBranch = randBr.branchId;
+    buildSequenceFromBlock(randBr.index);
+    isA = true;
+    scheduleOpponent(delay);
+}
+
 function getMyTotalPlies(){
   return isGoteMode ? Math.floor(rawMoves.length/2) : Math.ceil(rawMoves.length/2);
 }
@@ -881,7 +906,13 @@ function svH(){hst.push({st:st,blk:currentBlockIndex,cpb:currentPracticeBranch})
 
 function uM(){
   cancelAutoPlay();
-  cancelOppTimer();if(isA)return;closeBSheet();
+  var wasWaitingOpp = (oppTimer !== null);
+  cancelOppTimer();
+  if (wasWaitingOpp && isA) {
+      isA = false;
+  }
+  if(isA)return;
+  closeBSheet();
   if(isR){
     if(rPly<=0)return;
     var tp=rPly-1,tb=rCurBlock;while(tb>0&&rTree[tb]&&tp<rTree[tb].startPly-1)tb=rTree[tb].parentIdx;
@@ -936,8 +967,12 @@ function jumpToExactPly(playCount,skipBranch,preserveState){
       showBranchInfo(branches,nextPly);
       setStHtml('<span style="color:#2e7d32;">▶ '+nextPly+'手目を指してください</span>');
     }else{
-      setStHtml('<span style="color:#1976d2;">▶ '+nextPly+'手目 相手の応手を選択してください</span>');
-      showBranchSheet(branches,nextPly);
+      if (isRandomOpponentBranch) {
+          handleRandomOpponentBranch(branches, 400);
+      } else {
+          setStHtml('<span style="color:#1976d2;">▶ '+nextPly+'手目 相手の応手を選択してください</span>');
+          showBranchSheet(branches,nextPly);
+      }
     }
   }else{
     if(st<rawMoves.length&&!isMyTurn){isA=true;scheduleOpponent(400);}
@@ -1177,8 +1212,13 @@ function onC(x,y){
       var baseMsg='<span style="color:#1b5e20;">◯ 正解（'+turnMark+escapeHtml(formatMove(exp))+'）</span>';
       
       if(br2.length>=2){
-        setStHtml(baseMsg+'<br><span style="font-size:12px;color:#1976d2;">▶ 相手の応手を選択してください</span>');
-        isA=false;setTimeout(function(){showBranchSheet(br2,np2);},250);
+        if (isRandomOpponentBranch) {
+            setStHtml(baseMsg);
+            handleRandomOpponentBranch(br2, (sHtml||pHtml)?900:220);
+        } else {
+            setStHtml(baseMsg+'<br><span style="font-size:12px;color:#1976d2;">▶ 相手の応手を選択してください</span>');
+            isA=false;setTimeout(function(){showBranchSheet(br2,np2);},250);
+        }
       }
       else if(st<rawMoves.length){
         setStHtml(baseMsg);scheduleOpponent((sHtml||pHtml)?900:220);
@@ -1344,8 +1384,12 @@ function rG(){
         showBranchInfo(br,1);
         setStHtml('<span style="color:#2e7d32;">▶ 1手目を指してください</span>');
       } else {
-        setStHtml('<span style="color:#1976d2;">▶ 1手目 相手の応手を選択してください</span>');
-        showBranchSheet(br,1);
+        if(isRandomOpponentBranch){
+          handleRandomOpponentBranch(br, 400);
+        } else {
+          setStHtml('<span style="color:#1976d2;">▶ 1手目 相手の応手を選択してください</span>');
+          showBranchSheet(br,1);
+        }
       }
     }
     else {
